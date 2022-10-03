@@ -30,6 +30,10 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 客户端获取topic路由信息
+ * GET_ROUTEINFO_BY_TOPIC
+ */
 public class ClientRequestProcessor implements NettyRequestProcessor {
     protected NamesrvController namesrvController;
 

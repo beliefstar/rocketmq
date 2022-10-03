@@ -71,6 +71,7 @@ public class NamesrvController {
     private final KVConfigManager kvConfigManager;
     private final RouteInfoManager routeInfoManager;
 
+    // 主要是向 broker 同步最小 minBrokerId 的变更 code: NOTIFY_MIN_BROKER_ID_CHANGE
     private RemotingClient remotingClient;
     private RemotingServer remotingServer;
 
@@ -101,12 +102,25 @@ public class NamesrvController {
     }
 
     public boolean initialize() {
+        // 加载 {user.home}/namesrv/kvConfig.json 的内容到 kvConfigManager
         loadConfig();
+
+        // 初始化netty实例，server、client
         initiateNetworkComponents();
+
+        // 初始化线程池
         initiateThreadExecutors();
+
+        // 向netty-server注册处理器
         registerProcessor();
+
+        // 注册定时任务
         startScheduleService();
+
+        // 初始化ssl，监控证书文件的md5，查看是否改变
         initiateSslContext();
+
+        // ZoneRouteRPCHook: 请求 GET_ROUTEINFO_BY_TOPIC 时，根据 broker 的 zone 进行过滤
         initiateRpcHooks();
         return true;
     }
@@ -115,13 +129,19 @@ public class NamesrvController {
         this.kvConfigManager.load();
     }
 
+    /**
+     * 注册定时任务
+     */
     private void startScheduleService() {
+        // 定时扫描失效的broker 间隔 5s
         this.scanExecutorService.scheduleAtFixedRate(NamesrvController.this.routeInfoManager::scanNotActiveBroker,
             5, this.namesrvConfig.getScanNotActiveBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        // 10分钟打印一次kv配置
         this.scheduledExecutorService.scheduleAtFixedRate(NamesrvController.this.kvConfigManager::printAllPeriodically,
             1, 10, TimeUnit.MINUTES);
 
+        // 每秒打印一次信息
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 NamesrvController.this.printWaterMark();
@@ -131,6 +151,11 @@ public class NamesrvController {
         }, 10, 1, TimeUnit.SECONDS);
     }
 
+    /**
+     * 初始化netty实例，包含server和client
+     *
+     * client: 主要是向 broker 同步最小 minBrokerId 的变更
+     */
     private void initiateNetworkComponents() {
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
         this.remotingClient = new NettyRemotingClient(this.nettyClientConfig);
@@ -213,20 +238,26 @@ public class NamesrvController {
         return slowTimeMills;
     }
 
+    /**
+     * 向netty-server注册处理器
+     */
     private void registerProcessor() {
         if (namesrvConfig.isClusterTest()) {
 
             this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this, namesrvConfig.getProductEnvName()), this.defaultExecutor);
         } else {
             // Support get route info only temporarily
+            // 根据topic获取路由信息
             ClientRequestProcessor clientRequestProcessor = new ClientRequestProcessor(this);
             this.remotingServer.registerProcessor(RequestCode.GET_ROUTEINFO_BY_TOPIC, clientRequestProcessor, this.clientRequestExecutor);
 
+            // 默认处理器
             this.remotingServer.registerDefaultProcessor(new DefaultRequestProcessor(this), this.defaultExecutor);
         }
     }
 
     private void initiateRpcHooks() {
+        // 请求 GET_ROUTEINFO_BY_TOPIC 时，根据 broker 的 zone 进行过滤
         this.remotingServer.registerRPCHook(new ZoneRouteRPCHook());
     }
 

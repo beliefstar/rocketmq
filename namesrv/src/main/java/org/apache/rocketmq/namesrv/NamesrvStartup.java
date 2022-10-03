@@ -53,6 +53,7 @@ public class NamesrvStartup {
     private static ControllerConfig controllerConfig = null;
 
     public static void main(String[] args) {
+        System.setProperty(MixAll.ROCKETMQ_HOME_PROPERTY, "E:\\zhenxin\\rocketmq\\home");
         main0(args);
         controllerManagerMain();
     }
@@ -85,6 +86,13 @@ public class NamesrvStartup {
     public static void parseCommandlineAndConfigFile(String[] args) throws Exception {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 
+        /*
+        命令行参数：
+        -h help 帮助
+        -n namesrvAddr
+        -c configFile 配置文件
+        -p printConfigItem
+         */
         Options options = ServerUtil.buildCommandlineOptions(new Options());
         CommandLine commandLine = ServerUtil.parseCmdLine("mqnamesrv", args, buildCommandlineOptions(options), new PosixParser());
         if (null == commandLine) {
@@ -98,11 +106,14 @@ public class NamesrvStartup {
         nettyServerConfig.setListenPort(9876);
         controllerConfig = new ControllerConfig();
         if (commandLine.hasOption('c')) {
+            // 读取配置文件
             String file = commandLine.getOptionValue('c');
             if (file != null) {
                 InputStream in = new BufferedInputStream(Files.newInputStream(Paths.get(file)));
                 properties = new Properties();
                 properties.load(in);
+
+                // 将配置文件中的配置填充到配置类中
                 MixAll.properties2Object(properties, namesrvConfig);
                 MixAll.properties2Object(properties, nettyServerConfig);
                 MixAll.properties2Object(properties, nettyClientConfig);
@@ -116,6 +127,7 @@ public class NamesrvStartup {
         }
 
         if (commandLine.hasOption('p')) {
+            // 打印配置项
             MixAll.printObjectProperties(null, namesrvConfig);
             MixAll.printObjectProperties(null, nettyServerConfig);
             MixAll.printObjectProperties(null, nettyClientConfig);
@@ -130,6 +142,7 @@ public class NamesrvStartup {
             System.exit(-2);
         }
 
+        // 加载log配置文件，路径：ROCKETMQ_HOME /conf/logback_namesrv.xml
         LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
         JoranConfigurator configurator = new JoranConfigurator();
         configurator.setContext(lc);

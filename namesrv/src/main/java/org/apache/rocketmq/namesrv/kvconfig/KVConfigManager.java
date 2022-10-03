@@ -28,6 +28,21 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.common.protocol.body.KVTable;
 import org.apache.rocketmq.namesrv.NamesrvController;
 
+/**
+ * 文件路径：{user.home}/namesrv/kvConfig.json
+ *
+ * 文件内容：
+ * 根据命名空间拆分，每个命名空间都有一个 Map<String, String>
+ *
+ * “namespace1”:{
+ *     "key":"value"
+ *     ...
+ * }
+ * “namespace2”:{
+ *     "key":"value"
+ *     ...
+ * }
+ */
 public class KVConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 

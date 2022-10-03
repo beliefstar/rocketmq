@@ -50,6 +50,7 @@ public class NamesrvConfig {
      */
     private int defaultThreadPoolQueueCapacity = 10000;
     /**
+     * 扫描失效的broker的定时任务间隔
      * Interval of periodic scanning for non-active broker;
      */
     private long scanNotActiveBrokerInterval = 5 * 1000;

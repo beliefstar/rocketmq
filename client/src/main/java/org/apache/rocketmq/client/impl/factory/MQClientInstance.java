@@ -591,6 +591,13 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 向nameserver获取topic的路由信息
+     * @param topic \
+     * @param isDefault todo
+     * @param defaultMQProducer todo
+     * @return
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
         DefaultMQProducer defaultMQProducer) {
         try {

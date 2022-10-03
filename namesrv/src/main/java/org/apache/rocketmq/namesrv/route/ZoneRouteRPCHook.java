@@ -33,6 +33,13 @@ import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 根据 broker 的 zone 进行过滤
+ *
+ * 如果请求为 GET_ROUTEINFO_BY_TOPIC
+ * 并且扩展属性中包含 MixAll.ZONE_MODE 并且值为 true 并且包含 MixAll.ZONE_NAME，
+ * 则根据 MixAll.ZONE_NAME 对返回值中的 broker 进行过滤，只返回指定 MixAll.ZONE_NAME 的 broker
+ */
 public class ZoneRouteRPCHook implements RPCHook {
 
     @Override
