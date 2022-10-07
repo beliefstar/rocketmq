@@ -56,6 +56,19 @@ import static java.lang.String.format;
 import static org.apache.rocketmq.store.config.StorePathConfigHelper.getStorePathBatchConsumeQueue;
 import static org.apache.rocketmq.store.config.StorePathConfigHelper.getStorePathConsumeQueue;
 
+/**
+ * 存储所有ConsumeQueue文件，异步刷盘
+ *
+ * topic -|
+ *      consumeQueueId0 -|
+ *          00000000000000000000(文件)
+ *      consumeQueueId1
+ *
+ * 文件内容：
+ * |-------8字节-----|------4字节----|------8字节-----|
+ * | CommitLog便宜量 |    msg长度    |    tag哈希值    |
+ * |----------------|--------------|----------------|
+ */
 public class ConsumeQueueStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 

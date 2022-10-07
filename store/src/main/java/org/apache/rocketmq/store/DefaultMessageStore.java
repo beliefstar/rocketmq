@@ -97,32 +97,47 @@ import org.apache.rocketmq.store.util.PerfCounter;
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger LOGGER = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    /** 性能计数器：用于计算执行时间并打印各项指标 */
     public final PerfCounter.Ticks perfs = new PerfCounter.Ticks(LOGGER);
 
+    /** 配置类 */
     private final MessageStoreConfig messageStoreConfig;
+
     // CommitLog
+    /** 存储所有topic消息的文件 */
     private final CommitLog commitLog;
 
+    /** 存储所有ConsumeQueue文件，根据 topic -> ConsumeQueue -> 文件 */
     private final ConsumeQueueStore consumeQueueStore;
 
+    /** ConsumeQueue文件刷盘线程 */
     private final FlushConsumeQueueService flushConsumeQueueService;
 
+    /** 清除 CommitLog 文件服务 */
     private final CleanCommitLogService cleanCommitLogService;
 
+    /** 清除 ConsumeQueue 文件服务 */
     private final CleanConsumeQueueService cleanConsumeQueueService;
 
+    /** todo */
     private final CorrectLogicOffsetService correctLogicOffsetService;
 
+    /** Index 文件实现类 */
     private final IndexService indexService;
 
+    /** MappedFile 分配服务 */
     private final AllocateMappedFileService allocateMappedFileService;
 
+    /** CommitLog 消息分发，根据 CommitLog 构建 ConsumeQueue、Index 文件 */
     private ReputMessageService reputMessageService;
 
+    /** 存储高可用机制 */
     private HAService haService;
 
+    /** todo */
     private final StoreStatsService storeStatsService;
 
+    /** 消息堆内存缓存 */
     private final TransientStorePool transientStorePool;
 
     private final RunningFlags runningFlags = new RunningFlags();
@@ -130,16 +145,20 @@ public class DefaultMessageStore implements MessageStore {
 
     private final ScheduledExecutorService scheduledExecutorService;
     private final BrokerStatsManager brokerStatsManager;
+
+    /** 在消息拉取长轮询模式下的消息达到监听器 */
     private final MessageArrivingListener messageArrivingListener;
+
+    /** broker 配置 */
     private final BrokerConfig brokerConfig;
 
     private volatile boolean shutdown = true;
 
+    /** 文件刷盘检查点 */
     private StoreCheckpoint storeCheckpoint;
     private TimerMessageStore timerMessageStore;
 
-    private AtomicLong printTimes = new AtomicLong(0);
-
+    /** CommitLog 文件转发请求 */
     private final LinkedList<CommitLogDispatcher> dispatcherList;
 
     private RandomAccessFile lockFile;
@@ -162,6 +181,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private volatile long brokerInitMaxOffset = -1L;
 
+    /** 钩子方法，put消息之前执行 */
     protected List<PutMessageHook> putMessageHookList = new ArrayList<>();
 
     private SendMessageBackHook sendMessageBackHook;
@@ -489,9 +509,16 @@ public class DefaultMessageStore implements MessageStore {
         this.consumeQueueStore.destroy();
     }
 
+    /**
+     * 异步存储消息
+     * @param msg MessageInstance to store
+     * @return
+     */
     @Override
     public CompletableFuture<PutMessageResult> asyncPutMessage(MessageExtBrokerInner msg) {
 
+        // put消息之前的检查：broker停止工作、当前是否可写入等等
+        // BrokerController#registerMessageStoreHook()
         for (PutMessageHook putMessageHook : putMessageHookList) {
             PutMessageResult handleResult = putMessageHook.executeBeforePutMessage(msg);
             if (handleResult != null) {
@@ -499,21 +526,8 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
-        if (msg.getProperties().containsKey(MessageConst.PROPERTY_INNER_NUM)
-            && !MessageSysFlag.check(msg.getSysFlag(), MessageSysFlag.INNER_BATCH_FLAG)) {
-            LOGGER.warn("[BUG]The message had property {} but is not an inner batch", MessageConst.PROPERTY_INNER_NUM);
-            return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null));
-        }
-
-        if (MessageSysFlag.check(msg.getSysFlag(), MessageSysFlag.INNER_BATCH_FLAG)) {
-            Optional<TopicConfig> topicConfig = this.getTopicConfig(msg.getTopic());
-            if (!QueueTypeUtils.isBatchCq(topicConfig)) {
-                LOGGER.error("[BUG]The message is an inner batch but cq type is not batch cq");
-                return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null));
-            }
-        }
-
         long beginTime = this.getSystemClock().now();
+        // 追加写入 commitLog 中（异步）
         CompletableFuture<PutMessageResult> putResultFuture = this.commitLog.asyncPutMessage(msg);
 
         putResultFuture.thenAccept(result -> {
@@ -560,6 +574,11 @@ public class DefaultMessageStore implements MessageStore {
         return putResultFuture;
     }
 
+    /**
+     * 同步存储消息
+     * @param msg Message instance to store
+     * @return
+     */
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
         return waitForPutResult(asyncPutMessage(msg));
@@ -1876,6 +1895,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 根据 commitlog 文件构建 ConsumeQueue
+     */
     class CommitLogDispatcherBuildConsumeQueue implements CommitLogDispatcher {
 
         @Override
@@ -1893,6 +1915,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 根据 commitlog 文件构建 Index
+     */
     class CommitLogDispatcherBuildIndex implements CommitLogDispatcher {
 
         @Override
@@ -2421,8 +2446,12 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * CommitLog 消息分发，根据 CommitLog 构建 ConsumeQueue、Index 文件
+     */
     class ReputMessageService extends ServiceThread {
 
+        /** 从哪个offset开始转发消息 */
         private volatile long reputFromOffset = 0;
 
         public long getReputFromOffset() {

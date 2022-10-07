@@ -36,19 +36,28 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.logfile.DefaultMappedFile;
 import org.apache.rocketmq.store.logfile.MappedFile;
 
+/**
+ * 映射文件组合 -【文件夹】
+ */
 public class MappedFileQueue implements Swappable {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
+    /** 存储目录 */
     protected final String storePath;
 
+    /** 文件大小 */
     protected final int mappedFileSize;
 
+    /** 文件列表 */
     protected final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
+    /** MappedFile 分配服务 */
     protected final AllocateMappedFileService allocateMappedFileService;
 
+    /** 当前刷盘指针，该指针之前的数据都已经持久化到磁盘 */
     protected long flushedWhere = 0;
+    /** 当前提交指针，内存 ByteBuffer 的当前写指针 */
     protected long committedWhere = 0;
 
     protected volatile long storeTimestamp = 0;
@@ -60,6 +69,9 @@ public class MappedFileQueue implements Swappable {
         this.allocateMappedFileService = allocateMappedFileService;
     }
 
+    /**
+     * 检查当前所有的文件名是否是有序的，并且每个的大小是 mappedFileSize
+     */
     public void checkSelf() {
         List<MappedFile> mappedFiles = new ArrayList<>(this.mappedFiles);
         if (!mappedFiles.isEmpty()) {
@@ -79,6 +91,11 @@ public class MappedFileQueue implements Swappable {
         }
     }
 
+    /**
+     * 找到第一个最近更新时间大于等于 timestamp 的文件 ，如果不存在则返回最后一个文件
+     * @param timestamp
+     * @return
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -106,6 +123,12 @@ public class MappedFileQueue implements Swappable {
         return mfs;
     }
 
+    /**
+     * 从 offset 出截断，文件偏移量大于等于 offset 的文件或数据，被清空
+     * 1. 文件的后半部分大于等于 offset，则设置写指针、commit指针、flush指针到 offset 处。
+     * 2. 整个文件都大于等于 offset，则删除文件。
+     * @param offset
+     */
     public void truncateDirtyFiles(long offset) {
         List<MappedFile> willRemoveFiles = new ArrayList<MappedFile>();
 
@@ -150,6 +173,10 @@ public class MappedFileQueue implements Swappable {
     }
 
 
+    /**
+     * 加载谋个目录的所有文件
+     * @return
+     */
     public boolean load() {
         File dir = new File(this.storePath);
         File[] ls = dir.listFiles();
@@ -201,6 +228,12 @@ public class MappedFileQueue implements Swappable {
         return 0;
     }
 
+    /**
+     * 根据开始 startOffset 获取最后一个文件
+     * @param startOffset
+     * @param needCreate
+     * @return
+     */
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
         long createOffset = -1;
         MappedFile mappedFileLast = getLastMappedFile();

@@ -31,6 +31,9 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
+/**
+ * 内存映射文件
+ */
 public interface MappedFile {
     /**
      * Returns the file name of the {@code MappedFile}.

@@ -28,8 +28,9 @@ public class MQFaultStrategy {
 
     private boolean sendLatencyFaultEnable = false;
 
-    private long[] latencyMax = {50L, 100L, 550L, 1000L, 2000L, 3000L, 15000L};
-    private long[] notAvailableDuration = {0L, 0L, 30000L, 60000L, 120000L, 180000L, 600000L};
+    // 延迟时间对应的不可用时间，如果某次请求的耗时超过某值，则对应该broker不可用的时间
+    private long[] latencyMax =           {50L, 100L, 550L  , 1000L , 2000L  , 3000L  , 15000L };
+    private long[] notAvailableDuration = {0L , 0L  , 30000L, 60000L, 120000L, 180000L, 600000L};
 
     public long[] getNotAvailableDuration() {
         return notAvailableDuration;
@@ -59,9 +60,12 @@ public class MQFaultStrategy {
         if (this.sendLatencyFaultEnable) {
             try {
                 int index = tpInfo.getSendWhichQueue().incrementAndGet();
+
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
+                    // 轮训取模
                     int pos = index++ % tpInfo.getMessageQueueList().size();
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
+                    // 如果当前选中的节点可用则选择
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName()))
                         return mq;
                 }
@@ -88,8 +92,15 @@ public class MQFaultStrategy {
         return tpInfo.selectOneMessageQueue(lastBrokerName);
     }
 
+    /**
+     * 记录broker本次请求失败
+     * @param brokerName
+     * @param currentLatency
+     * @param isolation 是否隔离该broker isolation ? 30s : 根据本次请求的耗时，获取该实例不可用的时间
+     */
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
         if (this.sendLatencyFaultEnable) {
+            // isolation ? 30s : 根据本次请求的耗时，获取该实例不可用的时间
             long duration = computeNotAvailableDuration(isolation ? 30000 : currentLatency);
             this.latencyFaultTolerance.updateFaultItem(brokerName, currentLatency, duration);
         }

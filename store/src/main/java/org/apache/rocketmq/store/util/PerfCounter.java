@@ -26,6 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 性能计数器：用于计算执行时间并打印各项指标
+ */
 public class PerfCounter {
 
     private long last = System.currentTimeMillis();

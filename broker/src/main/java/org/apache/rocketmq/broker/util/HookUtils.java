@@ -63,6 +63,7 @@ public class HookUtils {
         if (!brokerController.getMessageStore().getRunningFlags().isWriteable()) {
             long value = printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
+                // 存储空间不足
                 LOG.warn("message store is not writeable, so putMessage is forbidden " + brokerController.getMessageStore().getRunningFlags().getFlagBits());
             }
 

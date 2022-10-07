@@ -866,6 +866,7 @@ public class BrokerController {
             }
         });
 
+        // 延时消息
         putMessageHookList.add(new PutMessageHook() {
             @Override
             public String hookName() {

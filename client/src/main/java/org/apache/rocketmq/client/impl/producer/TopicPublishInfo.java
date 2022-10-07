@@ -26,7 +26,11 @@ import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 public class TopicPublishInfo {
     private boolean orderTopic = false;
     private boolean haveTopicRouterInfo = false;
+
+    // 该主题的消息队列
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
+
+    // 轮询序号，每次选择时 +1，达到Integer.MAX_VALUE时，为0
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
     private TopicRouteData topicRouteData;
 
@@ -66,10 +70,17 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 默认轮询算法选择发送队列
+     * @param lastBrokerName
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
+            // 第一次发送
             return selectOneMessageQueue();
         } else {
+            // 重试时，规避上次失败的broker
             for (int i = 0; i < this.messageQueueList.size(); i++) {
                 int index = this.sendWhichQueue.incrementAndGet();
                 int pos = index % this.messageQueueList.size();

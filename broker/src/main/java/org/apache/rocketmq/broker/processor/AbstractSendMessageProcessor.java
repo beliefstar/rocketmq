@@ -447,9 +447,18 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         return response;
     }
 
+    /**
+     * 消息检查
+     * @param ctx
+     * @param requestHeader
+     * @param request
+     * @param response
+     * @return
+     */
     protected RemotingCommand msgCheck(final ChannelHandlerContext ctx,
         final SendMessageRequestHeader requestHeader, final RemotingCommand request,
         final RemotingCommand response) {
+        // 是否有可写入权限
         if (!PermName.isWriteable(this.brokerController.getBrokerConfig().getBrokerPermission())
             && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {
             response.setCode(ResponseCode.NO_PERMISSION);
@@ -465,6 +474,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             return response;
         }
 
+        // 获取topic路由信息
         TopicConfig topicConfig =
             this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
         if (null == topicConfig) {
@@ -477,6 +487,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 }
             }
 
+            // 路由不存在，查看是否允许创建
             LOGGER.warn("the topic {} not exist, producer: {}", requestHeader.getTopic(), ctx.channel().remoteAddress());
             topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageMethod(
                 requestHeader.getTopic(),
@@ -493,6 +504,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 }
             }
 
+            // topic不存在并且不允许自动创建
             if (null == topicConfig) {
                 response.setCode(ResponseCode.TOPIC_NOT_EXIST);
                 response.setRemark("topic[" + requestHeader.getTopic() + "] not exist, apply first please!"

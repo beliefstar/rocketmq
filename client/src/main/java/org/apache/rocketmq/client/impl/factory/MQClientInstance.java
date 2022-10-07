@@ -195,9 +195,12 @@ public class MQClientInstance {
             info.getMessageQueueList().addAll(mqEndPoints.keySet());
             info.getMessageQueueList().sort((mq1, mq2) -> MixAll.compareInteger(mq1.getQueueId(), mq2.getQueueId()));
         } else {
+            // route.getQueueDatas()：该topic共有多少个队列，QueueData：该队列分布在那个broker上，读写权限如何
+            // route.getBrokerDatas(): 该topic分散在哪些broker上。BrokerData：broker地址信息
             List<QueueData> qds = route.getQueueDatas();
             Collections.sort(qds);
             for (QueueData qd : qds) {
+                // 该队列是否可写(写权限)
                 if (PermName.isWriteable(qd.getPerm())) {
                     BrokerData brokerData = null;
                     for (BrokerData bd : route.getBrokerDatas()) {
@@ -592,10 +595,10 @@ public class MQClientInstance {
     }
 
     /**
-     * 向nameserver获取topic的路由信息
+     * 向nameserver获取topic的路由信息,根据路由信息是否发生变化，更新本地缓存
      * @param topic \
-     * @param isDefault todo
-     * @param defaultMQProducer todo
+     * @param isDefault 是否使用默认主题topic查询路由信息
+     * @param defaultMQProducer 默认路由配置信息
      * @return
      */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
@@ -642,11 +645,13 @@ public class MQClientInstance {
 
                             // Update Pub info
                             {
+                                // 根据topicRouteData 生成 List<MessageQueue>
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
                                 for (Entry<String, MQProducerInner> entry : this.producerTable.entrySet()) {
                                     MQProducerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        // 更新本地缓存 topicPublishInfoTable
                                         impl.updateTopicPublishInfo(topic, publishInfo);
                                     }
                                 }

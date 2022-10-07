@@ -774,6 +774,11 @@ public class CommitLog implements Swappable {
         }
     }
 
+    /**
+     * 异步保存消息
+     * @param msg
+     * @return
+     */
     public CompletableFuture<PutMessageResult> asyncPutMessage(final MessageExtBrokerInner msg) {
         // Set the storage time
         if (!defaultMessageStore.getMessageStoreConfig().isDuplicationEnable()) {
@@ -853,6 +858,7 @@ public class CommitLog implements Swappable {
             msg.setEncodedBuff(putMessageThreadLocal.getEncoder().getEncoderBuffer());
             PutMessageContext putMessageContext = new PutMessageContext(topicQueueKey);
 
+            // 获取同步锁，根据配置 使用 重入锁还是自旋锁
             putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
             try {
                 long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
@@ -864,24 +870,32 @@ public class CommitLog implements Swappable {
                     msg.setStoreTimestamp(beginLockTimestamp);
                 }
 
+                // 如果当前文件为空 或者文件已满，则创建新文件
                 if (null == mappedFile || mappedFile.isFull()) {
                     mappedFile = this.mappedFileQueue.getLastMappedFile(0); // Mark: NewFile may be cause noise
                 }
                 if (null == mappedFile) {
+                    // 创建 mappedFile 失败
                     log.error("create mapped file1 error, topic: " + msg.getTopic() + " clientAddr: " + msg.getBornHostString());
                     beginTimeInLock = 0;
                     return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPPED_FILE_FAILED, null));
                 }
 
+                // 写入文件
                 result = mappedFile.appendMessage(msg, this.appendMessageCallback, putMessageContext);
+
                 switch (result.getStatus()) {
+                    // 写入成功
                     case PUT_OK:
                         onCommitLogAppend(msg, result, mappedFile);
                         break;
+
+                    // 当前文件剩余空间不足
                     case END_OF_FILE:
                         onCommitLogAppend(msg, result, mappedFile);
                         unlockMappedFile = mappedFile;
                         // Create a new file, re-write the message
+                        // 创建新文件
                         mappedFile = this.mappedFileQueue.getLastMappedFile(0);
                         if (null == mappedFile) {
                             // XXX: warn and notify me
@@ -889,6 +903,7 @@ public class CommitLog implements Swappable {
                             beginTimeInLock = 0;
                             return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPPED_FILE_FAILED, result));
                         }
+                        // 使用新文件写入
                         result = mappedFile.appendMessage(msg, this.appendMessageCallback, putMessageContext);
                         if (AppendMessageStatus.PUT_OK.equals(result.getStatus())) {
                             onCommitLogAppend(msg, result, mappedFile);
@@ -929,6 +944,7 @@ public class CommitLog implements Swappable {
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).add(result.getMsgNum());
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).add(result.getWroteBytes());
 
+        // 处理刷盘和主从同步
         return handleDiskFlushAndHA(putMessageResult, msg, needAckNums, needHandleHA);
     }
 
@@ -1105,9 +1121,20 @@ public class CommitLog implements Swappable {
         return true;
     }
 
+    /**
+     * 处理刷盘和主从同步
+     * @param putMessageResult 写入内存的结果
+     * @param messageExt 消息
+     * @param needAckNums todo
+     * @param needHandleHA todo
+     * @return
+     */
     private CompletableFuture<PutMessageResult> handleDiskFlushAndHA(PutMessageResult putMessageResult,
         MessageExt messageExt, int needAckNums, boolean needHandleHA) {
+
+        // 处理刷盘
         CompletableFuture<PutMessageStatus> flushResultFuture = handleDiskFlush(putMessageResult.getAppendMessageResult(), messageExt);
+
         CompletableFuture<PutMessageStatus> replicaResultFuture;
         if (!needHandleHA) {
             replicaResultFuture = CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
@@ -1126,6 +1153,12 @@ public class CommitLog implements Swappable {
         });
     }
 
+    /**
+     * 处理刷盘
+     * @param result
+     * @param messageExt
+     * @return
+     */
     private CompletableFuture<PutMessageStatus> handleDiskFlush(AppendMessageResult result, MessageExt messageExt) {
         return this.flushManager.handleDiskFlush(result, messageExt);
     }
@@ -1444,10 +1477,16 @@ public class CommitLog implements Swappable {
      * GroupCommit Service
      */
     class GroupCommitService extends FlushCommitLogService {
+        // 写容器
         private volatile LinkedList<GroupCommitRequest> requestsWrite = new LinkedList<GroupCommitRequest>();
+        // 读容器
         private volatile LinkedList<GroupCommitRequest> requestsRead = new LinkedList<GroupCommitRequest>();
         private final PutMessageSpinLock lock = new PutMessageSpinLock();
 
+        /**
+         * 添加到写容器中
+         * @param request
+         */
         public void putRequest(final GroupCommitRequest request) {
             lock.lock();
             try {
@@ -1458,6 +1497,9 @@ public class CommitLog implements Swappable {
             this.wakeup();
         }
 
+        /**
+         * 交换写容器和读容器
+         */
         private void swapRequests() {
             lock.lock();
             try {
@@ -1469,6 +1511,9 @@ public class CommitLog implements Swappable {
             }
         }
 
+        /**
+         * 从读容器中读取出请求进行处理，然后将读容器设置为空容器
+         */
         private void doCommit() {
             if (!this.requestsRead.isEmpty()) {
                 for (GroupCommitRequest req : this.requestsRead) {
@@ -1653,8 +1698,12 @@ public class CommitLog implements Swappable {
         }
     }
 
+    /**
+     * 实际写入消息
+     */
     class DefaultAppendMessageCallback implements AppendMessageCallback {
         // File at the end of the minimum fixed length empty
+        // 文件末端的最小固定长度为空
         private static final int END_FILE_MIN_BLANK_LENGTH = 4 + 4;
         // Store the message content
         private final ByteBuffer msgStoreItemMemory;
@@ -1663,6 +1712,15 @@ public class CommitLog implements Swappable {
             this.msgStoreItemMemory = ByteBuffer.allocate(END_FILE_MIN_BLANK_LENGTH);
         }
 
+        /**
+         * 写入消息
+         * @param fileFromOffset 当前文件的偏移量，文件名
+         * @param byteBuffer
+         * @param maxBlank 当前文件剩余空间大小
+         * @param msgInner
+         * @param putMessageContext
+         * @return
+         */
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBrokerInner msgInner, PutMessageContext putMessageContext) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
@@ -1670,6 +1728,7 @@ public class CommitLog implements Swappable {
             // PHY OFFSET
             long wroteOffset = fileFromOffset + byteBuffer.position();
 
+            // msgId: ip + port + wroteOffset(消息偏移量)
             Supplier<String> msgIdSupplier = () -> {
                 int sysflag = msgInner.getSysFlag();
                 int msgIdLen = (sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 4 + 4 + 8 : 16 + 4 + 8;
@@ -1704,6 +1763,7 @@ public class CommitLog implements Swappable {
             final int msgLen = preEncodeBuffer.getInt(0);
 
             // Determines whether there is sufficient free space
+            // 当前文件剩余空间是否不足
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
                 this.msgStoreItemMemory.clear();
                 // 1 TOTALSIZE
@@ -1714,6 +1774,8 @@ public class CommitLog implements Swappable {
                 // Here the length of the specially set maxBlank
                 final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
                 byteBuffer.put(this.msgStoreItemMemory.array(), 0, 8);
+
+                // 当前文件剩余空间不足
                 return new AppendMessageResult(AppendMessageStatus.END_OF_FILE, wroteOffset,
                     maxBlank, /* only wrote 8 bytes, but declare wrote maxBlank for compute write position */
                     msgIdSupplier, msgInner.getStoreTimestamp(),
@@ -1733,10 +1795,15 @@ public class CommitLog implements Swappable {
             preEncodeBuffer.putLong(pos, msgInner.getStoreTimestamp());
 
             final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
+
             CommitLog.this.getMessageStore().getPerfCounter().startTick("WRITE_MEMORY_TIME_MS");
+
             // Write messages to the queue buffer
+            // 写入内存 page-cache
             byteBuffer.put(preEncodeBuffer);
+
             CommitLog.this.getMessageStore().getPerfCounter().endTick("WRITE_MEMORY_TIME_MS");
+
             msgInner.setEncodedBuff(null);
             return new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgIdSupplier,
                 msgInner.getStoreTimestamp(), queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills, messageNum);

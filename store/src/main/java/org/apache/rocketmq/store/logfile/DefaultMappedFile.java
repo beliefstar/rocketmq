@@ -49,33 +49,50 @@ import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
 public class DefaultMappedFile extends AbstractMappedFile {
+    // page-cache大小 默认4KB
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    /** 当前JVM中 MappedFile 的虚拟内存，每次新增一个文件则加 fileSize */
     protected static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
 
+    /** 当前JVM中 MappedFile 的数量，每次新增一个文件则加 1 */
     protected static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
 
     protected static final AtomicIntegerFieldUpdater<DefaultMappedFile> WROTE_POSITION_UPDATER;
     protected static final AtomicIntegerFieldUpdater<DefaultMappedFile> COMMITTED_POSITION_UPDATER;
     protected static final AtomicIntegerFieldUpdater<DefaultMappedFile> FLUSHED_POSITION_UPDATER;
 
+    /** 当前文件写指针 */
     protected volatile int wrotePosition;
+    /** 当前文件提交指针，如果开启 transientStorePool ，则数据会存储在 transientStorePool 中，然后提交到 内存映射 Bytebuffer 中，再写入磁盘 */
     protected volatile int committedPosition;
+    /** 当前文件刷盘指针 */
     protected volatile int flushedPosition;
+
+    /** 文件大小 固定值 */
     protected int fileSize;
     protected FileChannel fileChannel;
+
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
+     * 堆外内存，如果不为null时，则数据会先写入到该内存，然后提交到 FileChannel 中 (启用 transientStorePool 时，不为 null )
      */
     protected ByteBuffer writeBuffer = null;
+    /** 消息堆内存缓存 */
     protected TransientStorePool transientStorePool = null;
+
+    /** 文件名 */
     protected String fileName;
+    /** 文件起始偏移量 */
     protected long fileFromOffset;
     protected File file;
+    /** 文件内存映射 */
     protected MappedByteBuffer mappedByteBuffer;
     protected volatile long storeTimestamp = 0;
+    /** 是否是 MappedFileQueue 第一个文件 */
     protected boolean firstCreateInQueue = false;
+    /** 文件最后一次刷盘时间 */
     private long lastFlushTime = -1L;
 
     protected MappedByteBuffer mappedByteBufferWaitToClean = null;
@@ -201,23 +218,35 @@ public class DefaultMappedFile extends AbstractMappedFile {
         return appendMessagesInner(messageExtBatch, cb, putMessageContext);
     }
 
+    /**
+     * 写入内容
+     * @param messageExt
+     * @param cb
+     * @param putMessageContext
+     * @return
+     */
     public AppendMessageResult appendMessagesInner(final MessageExt messageExt, final AppendMessageCallback cb,
                                                    PutMessageContext putMessageContext) {
         assert messageExt != null;
         assert cb != null;
 
+        // 当前文件的写指针位置
         int currentPos = WROTE_POSITION_UPDATER.get(this);
 
         if (currentPos < this.fileSize) {
+
+            // 因为每次都是使用 slice 创建副本，所以每个副本的 position、limit都是原始的值
             ByteBuffer byteBuffer = appendMessageBuffer().slice();
+            // 设置写指针
             byteBuffer.position(currentPos);
+
             AppendMessageResult result;
             if (messageExt instanceof MessageExtBatch && !((MessageExtBatch) messageExt).isInnerBatch()) {
-                // traditional batch message
+                // 批量消息 traditional batch message
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos,
                         (MessageExtBatch) messageExt, putMessageContext);
             } else if (messageExt instanceof MessageExtBrokerInner) {
-                // traditional single message or newly introduced inner-batch message
+                // 单条消息 traditional single message or newly introduced inner-batch message
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos,
                         (MessageExtBrokerInner) messageExt, putMessageContext);
             } else {
@@ -305,6 +334,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
 
                     //We only append data to fileChannel or mappedByteBuffer, never both.
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
+                        // 如果使用了 transientStorePool 则数据是直接写入到 fileChannel 中的
                         this.fileChannel.force(false);
                     } else {
                         this.mappedByteBuffer.force();
@@ -324,6 +354,11 @@ public class DefaultMappedFile extends AbstractMappedFile {
         return this.getFlushedPosition();
     }
 
+    /**
+     *
+     * @param commitLeastPages the least pages to commit 最小提交的页数
+     * @return
+     */
     @Override
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
@@ -354,6 +389,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
 
         if (writePos - lastCommittedPosition > 0) {
             try {
+                // 因为每次都是使用 slice 创建副本，所以每个副本的 position、limit都是原始的值
                 ByteBuffer byteBuffer = writeBuffer.slice();
                 byteBuffer.position(lastCommittedPosition);
                 byteBuffer.limit(writePos);
@@ -390,6 +426,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
         }
 
         if (commitLeastPages > 0) {
+            // 当前可提交的页数是否大于等于 commitLeastPages
             return ((write / OS_PAGE_SIZE) - (commit / OS_PAGE_SIZE)) >= commitLeastPages;
         }
 
@@ -476,6 +513,11 @@ public class DefaultMappedFile extends AbstractMappedFile {
         return true;
     }
 
+    /**
+     * 销毁
+     * @param intervalForcibly If {@code true} then this method will destroy the file forcibly and ignore the reference
+     * @return
+     */
     @Override
     public boolean destroy(final long intervalForcibly) {
         this.shutdown(intervalForcibly);
@@ -517,10 +559,13 @@ public class DefaultMappedFile extends AbstractMappedFile {
     }
 
     /**
+     * 当前文件的真实写入指针位置
      * @return The max position which have valid data
      */
     @Override
     public int getReadPosition() {
+        // 如果 writeBuffer 为空，则说明写入数据是直接写入到 mappedByteBuffer 中的，在appendMessage方法中直接更新 wrotePosition 的，所以返回 wrotePosition 指针
+        // 如果不为空，则说明启用了 transientStorePool，在appendMessage时，写入的是堆外内存中，会调用commit方法写入到 fileChannel 中，所以返回 committedPosition 指针
         return this.writeBuffer == null ? WROTE_POSITION_UPDATER.get(this) : COMMITTED_POSITION_UPDATER.get(this);
     }
 
@@ -568,6 +613,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
         log.info("mapped file warm-up done. mappedFile={}, costTime={}", this.getFileName(),
                 System.currentTimeMillis() - beginTime);
 
+        // 内存锁定，将此内存锁定在内存中，不允许操作系统将此区域内存置换到磁盘中
         this.mlock();
     }
 

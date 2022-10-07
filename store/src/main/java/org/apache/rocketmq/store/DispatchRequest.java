@@ -18,9 +18,15 @@ package org.apache.rocketmq.store;
 
 import java.util.Map;
 
+/**
+ * commitLog 转发请求
+ */
 public class DispatchRequest {
+    //
     private final String topic;
+
     private final int queueId;
+
     private final long commitLogOffset;
     private int msgSize;
     private final long tagsCode;
@@ -30,7 +36,9 @@ public class DispatchRequest {
     private final boolean success;
     private final String uniqKey;
 
+    // 消息系统flag
     private final int sysFlag;
+    // 消息预处理事务偏移量
     private final long preparedTransactionOffset;
     private final Map<String, String> propertiesMap;
     private byte[] bitMap;

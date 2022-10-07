@@ -82,26 +82,31 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * For non-transactional messages, it does not matter as long as it's unique per process. </p>
      *
      * See <a href="http://rocketmq.apache.org/docs/core-concept/">core concepts</a> for more discussion.
+     * 生产者所属组，消息服务器在回查事务状态时会随机选择该组中任意一个生产者发起的事务回查请求。
      */
     private String producerGroup;
 
     /**
      * Just for testing or demo program
+     * 默认topicKey
      */
     private String createTopicKey = TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC;
 
     /**
      * Number of queues to create per default topic.
+     * 默认主题在每一个Broker队列的数量。
      */
     private volatile int defaultTopicQueueNums = 4;
 
     /**
      * Timeout for sending messages.
+     * 发送消息的超时时间
      */
     private int sendMsgTimeout = 3000;
 
     /**
      * Compress message body threshold, namely, message body larger than 4k will be compressed on default.
+     * 消息体超过改值后则启用压缩，默认4KB
      */
     private int compressMsgBodyOverHowmuch = 1024 * 4;
 
@@ -109,6 +114,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * Maximum number of retry to perform internally before claiming sending failure in synchronous mode. </p>
      *
      * This may potentially cause message duplication which is up to application developers to resolve.
+     * 同步发送消息的重试次数
      */
     private int retryTimesWhenSendFailed = 2;
 
@@ -116,16 +122,19 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * Maximum number of retry to perform internally before claiming sending failure in asynchronous mode. </p>
      *
      * This may potentially cause message duplication which is up to application developers to resolve.
+     * 异步发送消息的重试次数
      */
     private int retryTimesWhenSendAsyncFailed = 2;
 
     /**
      * Indicate whether to retry another broker on sending failure internally.
+     * 消息重试时选择另外一个broker，是否不等待存储结果就返回，默认false
      */
     private boolean retryAnotherBrokerWhenNotStoreOK = false;
 
     /**
      * Maximum allowed message body size in bytes.
+     * 最大消息长度，最大2^31-1
      */
     private int maxMessageSize = 1024 * 1024 * 4; // 4M
 
@@ -295,7 +304,9 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      */
     @Override
     public void start() throws MQClientException {
+        // 检查producerGroup是否符合要求
         this.setProducerGroup(withNamespace(this.producerGroup));
+
         this.defaultMQProducerImpl.start();
         if (null != traceDispatcher) {
             try {
@@ -861,7 +872,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      *
      * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
      *
-     * @param offsetMsgId message id
+     * @param offsetMsgId message id 是由 broker 的 ip+port 和 消息offset 组成，每次发送消息成功时，会返回这个字段
      * @return Message specified.
      * @throws MQBrokerException if there is any broker error.
      * @throws MQClientException if there is any client error.
@@ -902,7 +913,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
      *
      * @param topic Topic
-     * @param msgId Message ID
+     * @param msgId Message ID 是由 broker 的 ip+port 和 消息offset 组成，每次发送消息成功时，会返回这个字段
      * @return Message specified.
      * @throws MQBrokerException if there is any broker error.
      * @throws MQClientException if there is any client error.

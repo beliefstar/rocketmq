@@ -210,6 +210,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final TopicQueueMappingContext mappingContext,
         final SendMessageCallback sendMessageCallback) throws RemotingCommandException {
 
+        // 检查消息，如果topic不存在并且允许自动创建，则创建topic信息
         final RemotingCommand response = preSend(ctx, request, requestHeader);
         if (response.getCode() != -1) {
             return response;
@@ -231,6 +232,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setQueueId(queueIdInt);
 
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
+        // 消息重试次数是否达到最大值，则进入死信队列
         if (!handleRetryAndDLQ(requestHeader, response, request, msgInner, topicConfig, oriProps)) {
             return response;
         }
@@ -273,6 +275,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         long beginTimeMillis = this.brokerController.getMessageStore().now();
 
         if (brokerController.getBrokerConfig().isAsyncSendEnable()) {
+            // 异步
             CompletableFuture<PutMessageResult> asyncPutMessageFuture;
             if (sendTransactionPrepareMessage) {
                 asyncPutMessageFuture = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);

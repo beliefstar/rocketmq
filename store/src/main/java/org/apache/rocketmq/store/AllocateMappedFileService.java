@@ -34,13 +34,21 @@ import org.apache.rocketmq.store.logfile.DefaultMappedFile;
 import org.apache.rocketmq.store.logfile.MappedFile;
 
 /**
+ * 创建 MappedFile 服务
+ * 异步创建方式
+ * 1. 调用 putRequestAndReturnMappedFile 提交创建请求并同步等待创建结果的文件，保存请求到 requestTable 属性中
+ * 2. 异步线程从 requestTable 属性中获取请求，并根据请求创建 MappedFile 文件，设置到请求的属性中，请求中包含一个 CountDownLatch 属性
+ *
  * Create MappedFile in advance
  */
 public class AllocateMappedFileService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static int waitTimeOut = 1000 * 5;
+
+    /** 请求创建 MappedFile 的列表 */
     private ConcurrentMap<String, AllocateRequest> requestTable =
         new ConcurrentHashMap<String, AllocateRequest>();
+
     private PriorityBlockingQueue<AllocateRequest> requestQueue =
         new PriorityBlockingQueue<AllocateRequest>();
     private volatile boolean hasException = false;
@@ -50,6 +58,13 @@ public class AllocateMappedFileService extends ServiceThread {
         this.messageStore = messageStore;
     }
 
+    /**
+     * 提交创建请求并同步等待创建结果的文件
+     * @param nextFilePath
+     * @param nextNextFilePath
+     * @param fileSize
+     * @return
+     */
     public MappedFile putRequestAndReturnMappedFile(String nextFilePath, String nextNextFilePath, int fileSize) {
         int canSubmitRequests = 2;
         if (this.messageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
@@ -148,6 +163,7 @@ public class AllocateMappedFileService extends ServiceThread {
     }
 
     /**
+     * 创建 MappedFile
      * Only interrupted by the external thread, will return false
      */
     private boolean mmapOperation() {
