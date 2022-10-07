@@ -110,6 +110,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
     }
 
+    /**
+     * SYSTEM_BUSY
+     * link https://mp.weixin.qq.com/s/N_ttVjBpqVUA0CGrOybNLA
+     * @return
+     */
     @Override
     public boolean rejectRequest() {
         if (!this.brokerController.getBrokerConfig().isEnableSlaveActingMaster() && this.brokerController.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {
