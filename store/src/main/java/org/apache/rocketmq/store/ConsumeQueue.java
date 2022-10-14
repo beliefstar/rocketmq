@@ -41,9 +41,16 @@ import org.apache.rocketmq.store.queue.FileQueueLifeCycle;
 import org.apache.rocketmq.store.queue.QueueOffsetAssigner;
 import org.apache.rocketmq.store.queue.ReferredIterator;
 
+/**
+ *  文件内容：
+ *  |-------8字节-----|------4字节----|------8字节-----|
+ *  | CommitLog偏移量 |    msg长度    |    tag哈希值    |
+ *  |----------------|--------------|----------------|
+ */
 public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // 存储单位
     public static final int CQ_STORE_UNIT_SIZE = 20;
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
@@ -106,6 +113,9 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         return result;
     }
 
+    /**
+     * 遍历文件数据，找到当前写入的起始位置
+     */
     @Override
     public void recover() {
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
@@ -116,20 +126,26 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                 index = 0;
             }
 
+            // 单个文件大小
             int mappedFileSizeLogics = this.mappedFileSize;
             MappedFile mappedFile = mappedFiles.get(index);
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
+            // 当前文件的起始位置
             long processOffset = mappedFile.getFileFromOffset();
+            // 当前文件有效数据的大小
             long mappedFileOffset = 0;
             long maxExtAddr = 1;
             while (true) {
                 for (int i = 0; i < mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {
+
+                    // 单条消息数据信息
                     long offset = byteBuffer.getLong();
                     int size = byteBuffer.getInt();
                     long tagsCode = byteBuffer.getLong();
 
                     if (offset >= 0 && size > 0) {
                         mappedFileOffset = i + CQ_STORE_UNIT_SIZE;
+                        // 最大的消息偏移量，对应 commitlog 文件
                         this.maxPhysicOffset = offset + size;
                         if (isExtAddr(tagsCode)) {
                             maxExtAddr = tagsCode;
@@ -141,6 +157,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                     }
                 }
 
+                // 如果当前文件有效数据大小 和 文件总大小相等，说明该文件满了可以进行下一个文件
                 if (mappedFileOffset == mappedFileSizeLogics) {
                     index++;
                     if (index >= mappedFiles.size()) {
@@ -162,6 +179,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                 }
             }
 
+            // 当前可用的起始位置
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
@@ -393,6 +411,8 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
     }
 
     /**
+     * 根据 commitLog 的最小的消息偏移量，更新 consumeQueue 的最小消息偏移量 minLogicOffset
+     *
      * Update minLogicOffset such that entries after it would point to valid commit log address.
      *
      * @param minCommitLogOffset Minimum commit log offset
@@ -422,6 +442,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                 ByteBuffer buffer = lastRecord.getByteBuffer();
                 long commitLogOffset = buffer.getLong();
                 if (commitLogOffset < minCommitLogOffset) {
+                    // 当前文件全都是无效数据
                     // Keep the largest known consume offset, even if this consume-queue contains no valid entries at
                     // all. Let minLogicOffset point to a future slot.
                     this.minLogicOffset = lastMappedFile.getFileFromOffset() + maxReadablePosition;
@@ -436,6 +457,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
             }
         }
 
+        // 第一个文件
         MappedFile mappedFile = this.mappedFileQueue.getFirstMappedFile();
         long minExtAddr = 1;
         if (mappedFile != null) {
@@ -472,11 +494,13 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                 // Verify whether the previous value is still valid or not before conducting binary search
                 long commitLogOffset = buffer.getLong();
                 if (intact && commitLogOffset >= minCommitLogOffset) {
+                    // 内容是有效的
                     log.info("Abort correction as previous min-offset points to {}, which is greater than {}",
                         commitLogOffset, minCommitLogOffset);
                     return;
                 }
 
+                // 二分查找 - 找到第一条无效的数据
                 // Binary search between range [previous_min_logic_offset, first_file_from_offset + file_size)
                 // Note the consume-queue deletion procedure ensures the last entry points to somewhere valid.
                 int low = 0;

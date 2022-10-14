@@ -759,6 +759,7 @@ public class BrokerController {
             registerMessageStoreHook();
         }
 
+        // 消息数据恢复
         result = result && this.messageStore.load();
 
         if (messageStoreConfig.isTimerWheelEnable()) {

@@ -282,7 +282,9 @@ public class CommitLog implements Swappable {
     }
 
     /**
+     * 正常数据恢复
      * When the normal exit, data recovery, all memory data have been flush
+     * @param maxPhyOffsetOfConsumeQueue 当前 consumeQueue 中保存的 commitlog 最大的消息偏移量
      */
     public void recoverNormally(long maxPhyOffsetOfConsumeQueue) {
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
@@ -297,12 +299,16 @@ public class CommitLog implements Swappable {
 
             MappedFile mappedFile = mappedFiles.get(index);
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
+            // 总的偏移量
             long processOffset = mappedFile.getFileFromOffset();
+            // 当前文件的偏移量
             long mappedFileOffset = 0;
+            // 已验证的偏移量
             long lastValidMsgPhyOffset = this.getConfirmOffset();
             // normal recover doesn't require dispatching
             boolean doDispatch = false;
             while (true) {
+                // 读取一条消息
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover, checkDupInfo);
                 int size = dispatchRequest.getMsgSize();
                 // Normal data
@@ -350,6 +356,7 @@ public class CommitLog implements Swappable {
 
             // Clear ConsumeQueue redundant data
             if (maxPhyOffsetOfConsumeQueue >= processOffset) {
+                // 当前 consumeQueue 中保存的消息偏移量大于commitlog中最大的消息偏移量，将 consumeQueue 中多余部分数据截取掉
                 log.warn("maxPhyOffsetOfConsumeQueue({}) >= processOffset({}), truncate dirty logic files", maxPhyOffsetOfConsumeQueue, processOffset);
                 this.defaultMessageStore.truncateDirtyLogicFiles(processOffset);
             }
@@ -391,6 +398,7 @@ public class CommitLog implements Swappable {
                 case MESSAGE_MAGIC_CODE:
                     break;
                 case BLANK_MAGIC_CODE:
+                    // 文件末尾 8 byte
                     return new DispatchRequest(0, true /* success */);
                 default:
                     log.warn("found a illegal magic code 0x" + Integer.toHexString(magicCode));
@@ -601,6 +609,8 @@ public class CommitLog implements Swappable {
             // Looking beginning to recover from which file
             int index = mappedFiles.size() - 1;
             MappedFile mappedFile = null;
+            // 查看每个文件的第一条数据的写入时间和安全点时间比较，找到第一个在安全点内的文件的index，
+            // 意味着 大于等于index的文件 有可能已经被损坏了
             for (; index >= 0; index--) {
                 mappedFile = mappedFiles.get(index);
                 if (this.isMappedFileMatchedRecover(mappedFile)) {
@@ -615,17 +625,21 @@ public class CommitLog implements Swappable {
             }
 
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
+
+            // 最大偏移量(可写入位置)
             long processOffset = mappedFile.getFileFromOffset();
+            // 文件数据位置
             long mappedFileOffset = 0;
             long lastValidMsgPhyOffset = this.getConfirmOffset();
             // abnormal recover require dispatching
             boolean doDispatch = true;
             while (true) {
+                // 读取一条消息
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover, checkDupInfo);
                 int size = dispatchRequest.getMsgSize();
 
                 if (dispatchRequest.isSuccess()) {
-                    // Normal data
+                    // Normal data，是正常的消息
                     if (size > 0) {
                         lastValidMsgPhyOffset = processOffset + mappedFileOffset;
                         mappedFileOffset += size;
@@ -642,6 +656,7 @@ public class CommitLog implements Swappable {
                     // Since the return 0 representatives met last hole, this can
                     // not be included in truncate offset
                     else if (size == 0) {
+                        // 文件末尾
                         this.getMessageStore().onCommitLogDispatch(dispatchRequest, doDispatch, mappedFile, true, true);
                         index++;
                         if (index >= mappedFiles.size()) {
@@ -668,6 +683,7 @@ public class CommitLog implements Swappable {
                 }
             }
 
+            // 最大偏移量(可写入位置)
             processOffset += mappedFileOffset;
             // Set a candidate confirm offset.
             // In most cases, this value will be overwritten by confirmLog.init.
@@ -680,6 +696,7 @@ public class CommitLog implements Swappable {
             // Clear ConsumeQueue redundant data
             if (maxPhyOffsetOfConsumeQueue >= processOffset) {
                 log.warn("maxPhyOffsetOfConsumeQueue({}) >= processOffset({}), truncate dirty logic files", maxPhyOffsetOfConsumeQueue, processOffset);
+                // 当前 consumeQueue 中保存的消息偏移量大于commitlog中最大的消息偏移量，将 consumeQueue 中多余部分数据截取掉
                 this.defaultMessageStore.truncateDirtyLogicFiles(processOffset);
             }
         }
@@ -1201,6 +1218,7 @@ public class CommitLog implements Swappable {
         return -1;
     }
 
+    // 最小偏移量
     public long getMinOffset() {
         MappedFile mappedFile = this.mappedFileQueue.getFirstMappedFile();
         if (mappedFile != null) {
@@ -1703,7 +1721,7 @@ public class CommitLog implements Swappable {
      */
     class DefaultAppendMessageCallback implements AppendMessageCallback {
         // File at the end of the minimum fixed length empty
-        // 文件末端的最小固定长度为空
+        // 文件末端的最小固定长度为空 totalSize + migicCode(blank_code)
         private static final int END_FILE_MIN_BLANK_LENGTH = 4 + 4;
         // Store the message content
         private final ByteBuffer msgStoreItemMemory;
@@ -1763,7 +1781,7 @@ public class CommitLog implements Swappable {
             final int msgLen = preEncodeBuffer.getInt(0);
 
             // Determines whether there is sufficient free space
-            // 当前文件剩余空间是否不足
+            // 当前文件剩余空间是否不足 totalSize + migicCode(blank_code)
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
                 this.msgStoreItemMemory.clear();
                 // 1 TOTALSIZE

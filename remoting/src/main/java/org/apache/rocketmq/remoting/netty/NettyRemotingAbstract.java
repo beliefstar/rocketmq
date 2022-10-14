@@ -296,13 +296,16 @@ public abstract class NettyRemotingAbstract {
         final int opaque = cmd.getOpaque();
         final ResponseFuture responseFuture = responseTable.get(opaque);
         if (responseFuture != null) {
+            // 设置broker的响应
             responseFuture.setResponseCommand(cmd);
-
+            // 从请求列表移除
             responseTable.remove(opaque);
 
+            // 如果设置了callBack，则去执行callBack
             if (responseFuture.getInvokeCallback() != null) {
                 executeInvokeCallback(responseFuture);
             } else {
+                // 唤醒在该responseFuture对象上等待的线程
                 responseFuture.putResponse(cmd);
                 responseFuture.release();
             }
@@ -317,6 +320,7 @@ public abstract class NettyRemotingAbstract {
      */
     private void executeInvokeCallback(final ResponseFuture responseFuture) {
         boolean runInThisThread = false;
+        // 获取执行的线程池，可配置 nettyClient.setDisableCallbackExecutor(true) 来禁用线程池
         ExecutorService executor = this.getCallbackExecutor();
         if (executor != null && !executor.isShutdown()) {
             try {
@@ -407,26 +411,34 @@ public abstract class NettyRemotingAbstract {
     public RemotingCommand invokeSyncImpl(final Channel channel, final RemotingCommand request,
         final long timeoutMillis)
         throws InterruptedException, RemotingSendRequestException, RemotingTimeoutException {
-        //get the request id
+        // 请求ID，是一个 AtomicInteger，每创建一个 RemotingCommand 对象时递增
         final int opaque = request.getOpaque();
 
         try {
+            // 创建future对象，内部使用了countDownLatch来控制
             final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, timeoutMillis, null, null);
+            // 根据请求号，放入请求列表里，收到响应时会从这个请求列表里拿出这个对象设置响应值，并唤醒等待的线程
             this.responseTable.put(opaque, responseFuture);
             final SocketAddress addr = channel.remoteAddress();
+            // 发送请求
             channel.writeAndFlush(request).addListener((ChannelFutureListener) f -> {
                 if (f.isSuccess()) {
+                    // 发送成功
                     responseFuture.setSendRequestOK(true);
                     return;
                 }
-
+                // 发送失败
                 responseFuture.setSendRequestOK(false);
+                // 把请求从请求列表中移除
                 responseTable.remove(opaque);
+                // 设置异常信息
                 responseFuture.setCause(f.cause());
+                // 唤醒等待的线程
                 responseFuture.putResponse(null);
                 log.warn("Failed to write a request command to {}, caused by underlying I/O operation failure", addr);
             });
 
+            // 等待broker的响应
             RemotingCommand responseCommand = responseFuture.waitResponse(timeoutMillis);
             if (null == responseCommand) {
                 if (responseFuture.isSendRequestOK()) {
@@ -457,7 +469,7 @@ public abstract class NettyRemotingAbstract {
                 once.release();
                 throw new RemotingTimeoutException("invokeAsyncImpl call timeout");
             }
-
+            // 在future对象中设置了callBack，等收到响应时会从这个请求列表里拿出这个对象设置响应值，根据是否有callback使用特定的线程池来执行callback方法。
             final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, timeoutMillis - costTime, invokeCallback, once);
             this.responseTable.put(opaque, responseFuture);
             try {

@@ -61,6 +61,11 @@ public class IndexService {
             StorePathConfigHelper.getStorePathIndex(defaultMessageStore.getMessageStoreConfig().getStorePathRootDir());
     }
 
+    /**
+     * 磁盘数据加载
+     * @param lastExitOK
+     * @return
+     */
     public boolean load(final boolean lastExitOK) {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
@@ -70,9 +75,11 @@ public class IndexService {
             for (File file : files) {
                 try {
                     IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);
+                    // 加载index-header信息
                     f.load();
 
                     if (!lastExitOK) {
+                        // 如果上一次是非正常关闭，则根据安全点保存的最后一次刷盘的时间戳进行比较，如果更大则直接销毁该文件
                         if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
                             .getIndexMsgTimestamp()) {
                             f.destroy(0);
@@ -186,12 +193,14 @@ public class IndexService {
                         indexLastUpdatePhyoffset = f.getEndPhyOffset();
                     }
 
+                    // 当前文件是否在时间范围内
                     if (f.isTimeMatched(begin, end)) {
-
+                        // 查询该文件
                         f.selectPhyOffset(phyOffsets, buildKey(topic, key), maxNum, begin, end);
                     }
 
                     if (f.getBeginTimestamp() < begin) {
+                        // 因为是从后往前遍历，查询的时间段在当前文件的后面，则前面的文件肯定不在时间范围内
                         break;
                     }
 

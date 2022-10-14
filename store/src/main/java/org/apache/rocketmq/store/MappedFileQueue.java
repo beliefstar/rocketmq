@@ -49,7 +49,7 @@ public class MappedFileQueue implements Swappable {
     /** 文件大小 */
     protected final int mappedFileSize;
 
-    /** 文件列表 */
+    /** 文件列表 （读多写少） */
     protected final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
     /** MappedFile 分配服务 */
@@ -70,7 +70,7 @@ public class MappedFileQueue implements Swappable {
     }
 
     /**
-     * 检查当前所有的文件名是否是有序的，并且每个的大小是 mappedFileSize
+     * 检查当前所有的文件名是否是有序的，并且每个间隔的大小是 mappedFileSize: 1G
      */
     public void checkSelf() {
         List<MappedFile> mappedFiles = new ArrayList<>(this.mappedFiles);
@@ -124,7 +124,7 @@ public class MappedFileQueue implements Swappable {
     }
 
     /**
-     * 从 offset 出截断，文件偏移量大于等于 offset 的文件或数据，被清空
+     * 从 offset 处截断，文件偏移量大于等于 offset 的文件或数据，被清空
      * 1. 文件的后半部分大于等于 offset，则设置写指针、commit指针、flush指针到 offset 处。
      * 2. 整个文件都大于等于 offset，则删除文件。
      * @param offset
@@ -174,7 +174,7 @@ public class MappedFileQueue implements Swappable {
 
 
     /**
-     * 加载谋个目录的所有文件
+     * 加载commitlog目录的所有文件
      * @return
      */
     public boolean load() {
@@ -186,12 +186,17 @@ public class MappedFileQueue implements Swappable {
         return true;
     }
 
+    /**
+     * 加载commitlog目录的所有文件
+     * @return
+     */
     public boolean doLoad(List<File> files) {
         // ascending order
         files.sort(Comparator.comparing(File::getName));
 
         for (File file : files) {
             if (file.length() != this.mappedFileSize) {
+                // 每个文件都是固定大小 1G
                 log.warn(file + "\t" + file.length()
                         + " length not matched message store config value, please check it manually");
                 return false;
@@ -200,6 +205,7 @@ public class MappedFileQueue implements Swappable {
             try {
                 MappedFile mappedFile = new DefaultMappedFile(file.getPath(), mappedFileSize);
 
+                // 重置指针在文件末尾处
                 mappedFile.setWrotePosition(this.mappedFileSize);
                 mappedFile.setFlushedPosition(this.mappedFileSize);
                 mappedFile.setCommittedPosition(this.mappedFileSize);

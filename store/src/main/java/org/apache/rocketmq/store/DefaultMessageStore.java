@@ -278,6 +278,10 @@ public class DefaultMessageStore implements MessageStore {
         return true;
     }
 
+    /**
+     * 截取脏数据
+     * @param phyOffset physical offset
+     */
     @Override
     public void truncateDirtyLogicFiles(long phyOffset) {
         this.consumeQueueStore.truncateDirty(phyOffset);
@@ -291,22 +295,29 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+            // 上次退出是否是异常退出，(启动时会创建一个abort文件，正常关闭时会删除该文件)
             boolean lastExitOK = !this.isTempFileExist();
             LOGGER.info("last shutdown {}, store path root dir: {}",
                 lastExitOK ? "normally" : "abnormally", messageStoreConfig.getStorePathRootDir());
 
             // load Commit Log
+            // 加载commitLog文件，创建每个文件的内存映射文件
             result = this.commitLog.load();
 
             // load Consume Queue
+            // 加载 Consume Queue, 创建每个文件的内存映射文件
             result = result && this.consumeQueueStore.load();
 
             if (result) {
+                // 安全点文件，保存每个文件的刷盘指针
                 this.storeCheckpoint =
                     new StoreCheckpoint(
                         StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
                 this.masterFlushedOffset = this.storeCheckpoint.getMasterFlushedOffset();
+
+                // 加载index文件
                 result = this.indexService.load(lastExitOK);
+                // 数据加载校验，故障恢复
                 this.recover(lastExitOK);
                 LOGGER.info("message store recover end, and the max phy offset = {}", this.getMaxPhyOffset());
             }
@@ -1648,25 +1659,41 @@ public class DefaultMessageStore implements MessageStore {
         return file.exists();
     }
 
+    /**
+     * 数据恢复
+     * @param lastExitOK 上次是否正常关闭
+     */
     private void recover(final boolean lastExitOK) {
         boolean recoverConcurrently = this.brokerConfig.isRecoverConcurrently();
         LOGGER.info("message store recover mode: {}", recoverConcurrently ? "concurrent" : "normal");
 
         // recover consume queue
         long recoverConsumeQueueStart = System.currentTimeMillis();
+        // 遍历文件数据，找到当前写入的起始位置等属性
         this.recoverConsumeQueue();
+        // 当前 consumeQueue 保存的 commitlog 最大消息偏移量
         long maxPhyOffsetOfConsumeQueue = this.getMaxOffsetInConsumeQueue();
         long recoverConsumeQueueEnd = System.currentTimeMillis();
 
         // recover commitlog
         if (lastExitOK) {
+            // 正常启动恢复数据
+            // 遍历最后三个文件的内容，检查消息是否有效，并得到当前可写入的偏移量等属性
+            // 对比当前可写入偏移量和 consumeQueue 中消息最大偏移量对比，将 consumeQueue 中大于 commitLog 最大消息偏移量的数据删除调
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
+            // 异常启动恢复数据
+            /*
+            根据 safePoint 安全点文件保存的最后时间戳，找到第一个第一条消息的写入时间小于等于该安全点时间戳的mappedFile文件
+            从该mappedFile文件开始，检查每个文件内容，并得到当前可写入的偏移量等属性
+            对比当前可写入偏移量和 consumeQueue 中消息最大偏移量对比，将 consumeQueue 中大于 commitLog 最大消息偏移量的数据删除调
+             */
             this.commitLog.recoverAbnormally(maxPhyOffsetOfConsumeQueue);
         }
 
         // recover consume offset table
         long recoverCommitLogEnd = System.currentTimeMillis();
+        // 根据 commitLog 的最小的消息偏移量，更新 consumeQueue 的最小消息偏移量 minLogicOffset
         this.recoverTopicQueueTable();
         long recoverConsumeOffsetEnd = System.currentTimeMillis();
 
@@ -1708,6 +1735,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public void recoverTopicQueueTable() {
+        // 当前最小偏移量(即第一个commitLog文件的起始偏移量)
         long minPhyOffset = this.commitLog.getMinOffset();
         this.consumeQueueStore.recoverOffsetTable(minPhyOffset);
     }

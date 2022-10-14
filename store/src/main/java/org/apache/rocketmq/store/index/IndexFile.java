@@ -182,20 +182,25 @@ public class IndexFile {
     }
 
     public boolean isTimeMatched(final long begin, final long end) {
-        boolean result = begin < this.indexHeader.getBeginTimestamp() && end > this.indexHeader.getEndTimestamp();
-        result = result || begin >= this.indexHeader.getBeginTimestamp() && begin <= this.indexHeader.getEndTimestamp();
-        result = result || end >= this.indexHeader.getBeginTimestamp() && end <= this.indexHeader.getEndTimestamp();
+        boolean result =   begin < this.indexHeader.getBeginTimestamp() && this.indexHeader.getEndTimestamp() < end;
+        result = result || this.indexHeader.getBeginTimestamp() <= begin && begin <= this.indexHeader.getEndTimestamp();
+        result = result || this.indexHeader.getBeginTimestamp() <= end && end <= this.indexHeader.getEndTimestamp();
         return result;
     }
 
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
                                 final long begin, final long end) {
+        // 增加mappedFile的引用数
         if (this.mappedFile.hold()) {
+            // 要查询的key的hash，如果是负数要取反
             int keyHash = indexKeyHashMethod(key);
+            // 确定该hash对应的hash槽位
             int slotPos = keyHash % this.hashSlotNum;
+            // 根据槽位计算出该槽位在文件的物理偏移量
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
 
             try {
+                // 获取该槽位的第一个节点对应的值
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()
                     || this.indexHeader.getIndexCount() <= 1) {
@@ -205,25 +210,31 @@ public class IndexFile {
                             break;
                         }
 
+                        // 计算出该槽位的链表节点在文件中的物理偏移量
                         int absIndexPos =
                             IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
                                 + nextIndexToRead * indexSize;
 
+                        // 读取节点key-hash值
                         int keyHashRead = this.mappedByteBuffer.getInt(absIndexPos);
+                        // 读取节点commitLog偏移量
                         long phyOffsetRead = this.mappedByteBuffer.getLong(absIndexPos + 4);
-
+                        // 存储节点时的时间戳偏移量，对应该indexFile创建时间的偏移时间量(单位：秒)
                         long timeDiff = this.mappedByteBuffer.getInt(absIndexPos + 4 + 8);
+                        // 前一个节点的指针
                         int prevIndexRead = this.mappedByteBuffer.getInt(absIndexPos + 4 + 8 + 4);
 
                         if (timeDiff < 0) {
                             break;
                         }
-
+                        // 秒 转换为 毫秒
                         timeDiff *= 1000L;
-
+                        // 计算出该节点数据存储时的真实时间戳：加上indexFile创建时的时间
                         long timeRead = this.indexHeader.getBeginTimestamp() + timeDiff;
+                        // 时间戳是否在查询的范围内
                         boolean timeMatched = timeRead >= begin && timeRead <= end;
 
+                        // 如果hash相同并且时间匹配，则返回
                         if (keyHash == keyHashRead && timeMatched) {
                             phyOffsets.add(phyOffsetRead);
                         }

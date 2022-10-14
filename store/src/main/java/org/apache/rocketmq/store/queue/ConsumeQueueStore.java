@@ -66,7 +66,7 @@ import static org.apache.rocketmq.store.config.StorePathConfigHelper.getStorePat
  *
  * 文件内容：
  * |-------8字节-----|------4字节----|------8字节-----|
- * | CommitLog便宜量 |    msg长度    |    tag哈希值    |
+ * | CommitLog偏移量 |    msg长度    |    tag哈希值    |
  * |----------------|--------------|----------------|
  */
 public class ConsumeQueueStore {
@@ -124,12 +124,22 @@ public class ConsumeQueueStore {
         return fileQueueLifeCycle.load();
     }
 
+    /**
+     * 消费队列数据恢复
+     * @return
+     */
     public boolean load() {
         boolean cqLoadResult = loadConsumeQueues(getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()), CQType.SimpleCQ);
         boolean bcqLoadResult = loadConsumeQueues(getStorePathBatchConsumeQueue(this.messageStoreConfig.getStorePathRootDir()), CQType.BatchCQ);
         return cqLoadResult && bcqLoadResult;
     }
 
+    /**
+     * 从文件夹路径加载消费队列数据
+     * @param storePath xx/consumequeue
+     * @param cqType
+     * @return
+     */
     private boolean loadConsumeQueues(String storePath, CQType cqType) {
         File dirLogic = new File(storePath);
         File[] fileTopicList = dirLogic.listFiles();
@@ -148,10 +158,15 @@ public class ConsumeQueueStore {
                             continue;
                         }
 
+                        // 检查cqType是否和topic配置的一致
                         queueTypeShouldBe(topic, cqType);
 
+                        // 创建 ConsumeQueue 对象
                         ConsumeQueueInterface logic = createConsumeQueueByType(cqType, topic, queueId, storePath);
+                        // 根据topic 放入 consumeQueueTable 中
                         this.putConsumeQueue(topic, queueId, logic);
+
+                        // 加载文件，生成对应的内存映射
                         if (!this.load(logic)) {
                             return false;
                         }
@@ -205,14 +220,20 @@ public class ConsumeQueueStore {
             new ThreadFactoryImpl(threadNamePrefix));
     }
 
+    /**
+     * 数据恢复
+     * @param consumeQueue
+     */
     public void recover(ConsumeQueueInterface consumeQueue) {
         FileQueueLifeCycle fileQueueLifeCycle = getLifeCycle(consumeQueue.getTopic(), consumeQueue.getQueueId());
+        // 遍历文件数据，找到当前写入的起始位置
         fileQueueLifeCycle.recover();
     }
 
     public void recover() {
         for (ConcurrentMap<Integer, ConsumeQueueInterface> maps : this.consumeQueueTable.values()) {
             for (ConsumeQueueInterface logic : maps.values()) {
+                // 遍历文件数据，找到当前写入的起始位置
                 this.recover(logic);
             }
         }
@@ -427,6 +448,10 @@ public class ConsumeQueueStore {
         }
     }
 
+    /**
+     * 当前最小偏移量(即第一个commitLog文件的起始偏移量)
+     * @param minPhyOffset
+     */
     public void recoverOffsetTable(long minPhyOffset) {
         ConcurrentMap<String, Long> cqOffsetTable = new ConcurrentHashMap<>(1024);
         ConcurrentMap<String, Long> bcqOffsetTable = new ConcurrentHashMap<>(1024);
@@ -442,6 +467,7 @@ public class ConsumeQueueStore {
                     cqOffsetTable.put(key, maxOffsetInQueue);
                 }
 
+                // 根据 commitLog 的最小的消息偏移量，更新 consumeQueue 的最小消息偏移量 minLogicOffset
                 this.correctMinOffset(logic, minPhyOffset);
             }
         }
