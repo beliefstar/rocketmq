@@ -96,7 +96,7 @@ public class MQFaultStrategy {
      * 记录broker本次请求失败
      * @param brokerName
      * @param currentLatency
-     * @param isolation 是否隔离该broker isolation ? 30s : 根据本次请求的耗时，获取该实例不可用的时间
+     * @param isolation 是否隔离该broker isolation ? 10min : 根据本次请求的耗时，获取该实例不可用的时间
      */
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
         if (this.sendLatencyFaultEnable) {
@@ -106,6 +106,11 @@ public class MQFaultStrategy {
         }
     }
 
+    /**
+     * 计算不可用时间
+     * @param currentLatency 当前耗时  是否请求失败 ? 30000 : 实际耗时时间
+     * @return
+     */
     private long computeNotAvailableDuration(final long currentLatency) {
         for (int i = latencyMax.length - 1; i >= 0; i--) {
             if (currentLatency >= latencyMax[i])

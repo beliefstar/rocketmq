@@ -77,6 +77,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             case RequestCode.CONSUMER_SEND_MSG_BACK:
                 return this.consumerSendMsgBack(ctx, request);
             default:
+                // 解析请求头
                 SendMessageRequestHeader requestHeader = parseRequestHeader(request);
                 if (requestHeader == null) {
                     return null;
@@ -112,6 +113,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
     /**
      * SYSTEM_BUSY
+     * pagecache锁定时间超过 1 秒，或者开启 TransientStorePool 并且可用的堆外内存为空
      * link https://mp.weixin.qq.com/s/N_ttVjBpqVUA0CGrOybNLA
      * @return
      */
@@ -122,6 +124,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         if (this.brokerController.getMessageStore().isOSPageCacheBusy() || this.brokerController.getMessageStore().isTransientStorePoolDeficient()) {
+            // PageCacheBusy： 在使用commitlog写入时的锁定时间超过1s
+            // TransientStorePoolDeficient：开启了`TransientStorePool`并且当前可用的ByteBuffer为空
             return true;
         }
 

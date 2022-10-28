@@ -60,9 +60,9 @@ public class AllocateMappedFileService extends ServiceThread {
 
     /**
      * 提交创建请求并同步等待创建结果的文件
-     * @param nextFilePath
-     * @param nextNextFilePath
-     * @param fileSize
+     * @param nextFilePath 要创建的文件
+     * @param nextNextFilePath 下一个要创建的文件，提前创建
+     * @param fileSize 文件大小
      * @return
      */
     public MappedFile putRequestAndReturnMappedFile(String nextFilePath, String nextNextFilePath, int fileSize) {

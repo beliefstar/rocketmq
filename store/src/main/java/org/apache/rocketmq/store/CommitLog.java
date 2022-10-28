@@ -868,6 +868,7 @@ public class CommitLog implements Swappable {
                 defaultMessageStore.assignOffset(msg, getMessageNum(msg));
             }
 
+            // message编码
             PutMessageResult encodeResult = putMessageThreadLocal.getEncoder().encode(msg);
             if (encodeResult != null) {
                 return CompletableFuture.completedFuture(encodeResult);
@@ -879,11 +880,13 @@ public class CommitLog implements Swappable {
             putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
             try {
                 long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
+                // 开始锁定时间戳
                 this.beginTimeInLock = beginLockTimestamp;
 
                 // Here settings are stored timestamp, in order to ensure an orderly
                 // global
                 if (!defaultMessageStore.getMessageStoreConfig().isDuplicationEnable()) {
+                    // 存储时的时间戳
                     msg.setStoreTimestamp(beginLockTimestamp);
                 }
 
@@ -1784,6 +1787,7 @@ public class CommitLog implements Swappable {
             // 当前文件剩余空间是否不足 totalSize + migicCode(blank_code)
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
                 this.msgStoreItemMemory.clear();
+                // 文件末尾写入一条空消息
                 // 1 TOTALSIZE
                 this.msgStoreItemMemory.putInt(maxBlank);
                 // 2 MAGICCODE
@@ -2221,11 +2225,18 @@ public class CommitLog implements Swappable {
             }
         }
 
+        /**
+         * 处理消息刷盘 默认异步刷盘
+         * @param result
+         * @param messageExt
+         * @return
+         */
         @Override
         public CompletableFuture<PutMessageStatus> handleDiskFlush(AppendMessageResult result, MessageExt messageExt) {
-            // Synchronization flush
+            // Synchronization flush 同步刷盘
             if (FlushDiskType.SYNC_FLUSH == CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
                 final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
+                // 本次是否等待消息刷盘结束再返回
                 if (messageExt.isWaitStoreMsgOK()) {
                     GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(), CommitLog.this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
                     flushDiskWatcher.add(request);
@@ -2236,7 +2247,7 @@ public class CommitLog implements Swappable {
                     return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
                 }
             }
-            // Asynchronous flush
+            // Asynchronous flush 异步刷盘
             else {
                 if (!CommitLog.this.defaultMessageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
                     flushCommitLogService.wakeup();

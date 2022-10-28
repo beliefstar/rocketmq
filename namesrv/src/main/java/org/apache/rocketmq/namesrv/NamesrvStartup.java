@@ -53,7 +53,7 @@ public class NamesrvStartup {
     private static ControllerConfig controllerConfig = null;
 
     public static void main(String[] args) {
-        System.setProperty(MixAll.ROCKETMQ_HOME_PROPERTY, "E:\\zhenxin\\rocketmq\\home");
+        System.setProperty(MixAll.ROCKETMQ_HOME_PROPERTY, "D:\\work\\self\\rocketmq\\home");
         main0(args);
         controllerManagerMain();
     }

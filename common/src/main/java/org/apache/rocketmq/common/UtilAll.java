@@ -103,6 +103,22 @@ public class UtilAll {
         return nf.format(offset);
     }
 
+    public static void main(String[] args) throws InterruptedException {
+        long msgUnit = 1024 * 1024 * 4; // 4MB
+        long qps = 1;
+        long GB = 1024 * 1024 * 1024;
+        long size = GB / msgUnit;
+        long fileSize = Long.MAX_VALUE / GB;
+        long totalMessageCnt = fileSize * size;
+        System.out.println("文件总数量 = " + fileSize);
+        System.out.println("单个文件存储的消息数量 = " + size);
+        System.out.println("可以存储的消息总数量 = " + totalMessageCnt);
+        System.out.println(totalMessageCnt / qps / 60 + "m");
+        System.out.println(totalMessageCnt / qps / 60 / 60 + "h");
+        System.out.println(totalMessageCnt / qps / 60 / 60 / 24 + "d");
+        System.out.println(totalMessageCnt / qps / 60 / 60 / 24 / 365 + "y");
+    }
+
     public static long computeElapsedTimeMilliseconds(final long beginTime) {
         return System.currentTimeMillis() - beginTime;
     }

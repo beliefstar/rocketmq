@@ -45,6 +45,16 @@ public class HookUtils {
 
     private static AtomicLong printTimes = new AtomicLong(0);
 
+    /**
+     * 存储消息之前检查消息
+     * 1. 服务不可用：节点停止、从节点、
+     * 2. 不可写：磁盘空间满、写错误
+     * 3. 参数校验
+     * 4. OS PageCache-Busy
+     * @param brokerController
+     * @param msg
+     * @return
+     */
     public static PutMessageResult checkBeforePutMessage(BrokerController brokerController, final MessageExt msg) {
         if (brokerController.getMessageStore().isShutdown()) {
             LOG.warn("message store has shutdown, so putMessage is forbidden");

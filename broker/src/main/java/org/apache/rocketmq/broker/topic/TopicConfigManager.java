@@ -216,15 +216,19 @@ public class TopicConfigManager extends ConfigManager {
 
                     TopicConfig defaultTopicConfig = this.topicConfigTable.get(defaultTopic);
                     if (defaultTopicConfig != null) {
+                        // 默认TopicConfig
                         if (defaultTopic.equals(TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC)) {
                             if (!this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {
+                                // 如果是不允许自动创建，则去掉 PERM_INHERIT 权限
                                 defaultTopicConfig.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);
                             }
                         }
 
+                        // 是否允许创建
                         if (PermName.isInherited(defaultTopicConfig.getPerm())) {
                             topicConfig = new TopicConfig(topic);
 
+                            // 队列数量
                             int queueNums = Math.min(clientDefaultTopicQueueNums, defaultTopicConfig.getWriteQueueNums());
 
                             if (queueNums < 0) {
@@ -257,7 +261,7 @@ public class TopicConfigManager extends ConfigManager {
                         dataVersion.nextVersion(stateMachineVersion);
 
                         createNew = true;
-
+                        // 持久化到磁盘 ${ROCKETMQ_HOME}/store/config/topics.json
                         this.persist();
                     }
                 } finally {

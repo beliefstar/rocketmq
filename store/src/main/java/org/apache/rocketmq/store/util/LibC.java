@@ -23,7 +23,8 @@ import com.sun.jna.Platform;
 import com.sun.jna.Pointer;
 
 public interface LibC extends Library {
-    LibC INSTANCE = (LibC) Native.loadLibrary(Platform.isWindows() ? "msvcrt" : "c", LibC.class);
+//    LibC INSTANCE = (LibC) Native.loadLibrary(Platform.isWindows() ? "msvcrt" : "c", LibC.class);
+    LibC INSTANCE = new NOOP();
 
     int MADV_WILLNEED = 3;
     int MADV_DONTNEED = 4;
@@ -50,4 +51,37 @@ public interface LibC extends Library {
     int mlockall(int flags);
 
     int msync(Pointer p, NativeLong length, int flags);
+
+    public static class NOOP implements LibC {
+
+        @Override
+        public int mlock(Pointer var1, NativeLong var2) {
+            return 0;
+        }
+
+        @Override
+        public int munlock(Pointer var1, NativeLong var2) {
+            return 0;
+        }
+
+        @Override
+        public int madvise(Pointer var1, NativeLong var2, int var3) {
+            return 0;
+        }
+
+        @Override
+        public Pointer memset(Pointer p, int v, long len) {
+            return null;
+        }
+
+        @Override
+        public int mlockall(int flags) {
+            return 0;
+        }
+
+        @Override
+        public int msync(Pointer p, NativeLong length, int flags) {
+            return 0;
+        }
+    }
 }

@@ -530,6 +530,12 @@ public class DefaultMessageStore implements MessageStore {
 
         // put消息之前的检查：broker停止工作、当前是否可写入等等
         // BrokerController#registerMessageStoreHook()
+        /*
+         * 1. 服务不可用：节点停止、从节点、
+         * 2. 不可写：磁盘空间满、写错误
+         * 3. 参数校验
+         * 4. OS PageCache-Busy: commitLog写入获取锁的时间超过1s
+         */
         for (PutMessageHook putMessageHook : putMessageHookList) {
             PutMessageResult handleResult = putMessageHook.executeBeforePutMessage(msg);
             if (handleResult != null) {

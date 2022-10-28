@@ -97,6 +97,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
 
     protected MappedByteBuffer mappedByteBufferWaitToClean = null;
     protected long swapMapTime = 0L;
+    /** byteBuffer 被访问的次数 */
     protected long mappedByteBufferAccessCountSinceLastSwap = 0L;
 
     static {
@@ -252,6 +253,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
             } else {
                 return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             }
+            // 更新写指针
             WROTE_POSITION_UPDATER.addAndGet(this, result.getWroteBytes());
             this.storeTimestamp = result.getStoreTimestamp();
             return result;

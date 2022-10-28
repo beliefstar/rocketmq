@@ -205,7 +205,7 @@ public class MappedFileQueue implements Swappable {
             try {
                 MappedFile mappedFile = new DefaultMappedFile(file.getPath(), mappedFileSize);
 
-                // 重置指针在文件末尾处
+                // 重置指针在文件末尾处，后续数据恢复时会重新设置该指针
                 mappedFile.setWrotePosition(this.mappedFileSize);
                 mappedFile.setFlushedPosition(this.mappedFileSize);
                 mappedFile.setCommittedPosition(this.mappedFileSize);
