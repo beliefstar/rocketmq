@@ -944,7 +944,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         }
 
         long offset = this.brokerController.getMessageStore().getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
-
+        System.out.println("offset max: " + offset);
         responseHeader.setOffset(offset);
 
         response.setCode(ResponseCode.SUCCESS);

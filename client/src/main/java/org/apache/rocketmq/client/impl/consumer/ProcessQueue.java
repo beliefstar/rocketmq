@@ -47,8 +47,12 @@ public class ProcessQueue {
     private final static long PULL_MAX_IDLE_TIME = Long.parseLong(System.getProperty("rocketmq.client.pull.pullMaxIdleTime", "120000"));
     private final InternalLogger log = ClientLogger.getLog();
     private final ReadWriteLock treeMapLock = new ReentrantReadWriteLock();
-    private final TreeMap<Long, MessageExt> msgTreeMap = new TreeMap<Long, MessageExt>();
+
+    private final TreeMap<Long/* 消息在consumeQueue的逻辑偏移量 */, MessageExt> msgTreeMap = new TreeMap<Long, MessageExt>();
+
+    // 当前存储的消息数量
     private final AtomicLong msgCount = new AtomicLong();
+    // 当前存储的消息大小size
     private final AtomicLong msgSize = new AtomicLong();
     private final Lock consumeLock = new ReentrantLock();
     /**
@@ -57,12 +61,15 @@ public class ProcessQueue {
     private final TreeMap<Long, MessageExt> consumingMsgOrderlyTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong tryUnlockTimes = new AtomicLong(0);
     private volatile long queueOffsetMax = 0L;
+    // 标志位，标记当前工作队列是否已经丢弃
     private volatile boolean dropped = false;
     private volatile long lastPullTimestamp = System.currentTimeMillis();
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();
+    // 标志位，标记当前工作队列是否正在进行消费
     private volatile boolean consuming = false;
+    // 当前消息队列在broker堆积的还没有被消费的消息数量
     private volatile long msgAccCnt = 0;
 
     public boolean isLockExpired() {
@@ -88,6 +95,7 @@ public class ProcessQueue {
                 this.treeMapLock.readLock().lockInterruptibly();
                 try {
                     if (!msgTreeMap.isEmpty()) {
+                        // 该条消息开始消费的时间，只有并发消费模式才有
                         String consumeStartTimeStamp = MessageAccessor.getConsumeStartTimeStamp(msgTreeMap.firstEntry().getValue());
                         if (StringUtils.isNotEmpty(consumeStartTimeStamp) && System.currentTimeMillis() - Long.parseLong(consumeStartTimeStamp) > pushConsumer.getConsumeTimeout() * 60 * 1000) {
                             msg = msgTreeMap.firstEntry().getValue();
@@ -105,7 +113,7 @@ public class ProcessQueue {
             }
 
             try {
-
+                // 发送给broker 重新消费
                 pushConsumer.sendMessageBack(msg, 3);
                 log.info("send expire msg back. topic={}, msgId={}, storeHost={}, queueId={}, queueOffset={}", msg.getTopic(), msg.getMsgId(), msg.getStoreHost(), msg.getQueueId(), msg.getQueueOffset());
                 try {
@@ -147,14 +155,18 @@ public class ProcessQueue {
                 msgCount.addAndGet(validMsgCnt);
 
                 if (!msgTreeMap.isEmpty() && !this.consuming) {
+                    // 标记可以进行消息消费
                     dispatchToConsume = true;
                     this.consuming = true;
                 }
 
                 if (!msgs.isEmpty()) {
+                    // 最后一条消息
                     MessageExt messageExt = msgs.get(msgs.size() - 1);
+                    // 当前consumeQueue中最大的偏移量
                     String property = messageExt.getProperty(MessageConst.PROPERTY_MAX_OFFSET);
                     if (property != null) {
+                        // 还剩余没有消费的消息数量
                         long accTotal = Long.parseLong(property) - messageExt.getQueueOffset();
                         if (accTotal > 0) {
                             this.msgAccCnt = accTotal;
@@ -208,6 +220,7 @@ public class ProcessQueue {
                     msgCount.addAndGet(removedCnt);
 
                     if (!msgTreeMap.isEmpty()) {
+                        // 返回当前的最小消费位点
                         result = msgTreeMap.firstKey();
                     }
                 }

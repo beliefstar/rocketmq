@@ -73,6 +73,8 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
 
     /**
      * 消费组
+     *
+     * 要求相同角色的消费者拥有完全相同的订阅和消费者组，以正确地实现负载平衡。它必须是全局独一无二的。
      * Consumers of the same role is required to have exactly same subscriptions and consumerGroup to correctly achieve
      * load balance. It's required and needs to be globally unique.
      * </p>
@@ -85,6 +87,9 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * 消费模式：可选 “集群” 、 “广播” 两种模式
      * Message model defines the way how messages are delivered to each consumer clients.
      * </p>
+     * RocketMQ支持两种消息模型:集群和广播。
+     * 如果设置了集群，具有相同消费者组的消费者客户端将各自订阅部分消息队列，从而实现负载平衡;
+     * 相反，如果设置了广播，则每个客户端将分别订阅所有的消息队列。
      *
      * RocketMQ supports two message models: clustering and broadcasting. If clustering is set, consumer clients with
      * the same {@link #consumerGroup} would only consume shards of the messages subscribed, which achieves load
@@ -100,16 +105,14 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * 第一次消费时的策略
      *
      * CONSUME_FROM_LAST_OFFSET：
-     * 如果磁盘消息未过期且未被删除，则从最小偏移量开始消费；
-     * 如果磁盘已过期并被删除，则从最大偏移量开始消费。
+     * 4.x:如果磁盘消息未过期且未被删除，则从最小偏移量开始消费；如果磁盘已过期并被删除，则从最大偏移量开始消费。
+     * 5.x:从最大偏移量开始消费 (请求时新增了属性setZeroIfNotFound，值为false)
      *
-     * CONSUME_FROM_FIRST_OFFSET：
-     * 从队列当前最小偏移量开始消费
+     * CONSUME_FROM_FIRST_OFFSET：从队列当前最小偏移量开始消费
      *
-     * CONSUME_FROM_TIMESTAMP：
-     * 从消费者指定时间戳开始消费
+     * CONSUME_FROM_TIMESTAMP：从消费者指定时间戳开始消费
      *
-     * link https://mp.weixin.qq.com/s/N_ttVjBpqVUA0CGrOybNLA
+     * 该属性只有在获取消费位点失败或者无效的情况下才生效
      */
     private ConsumeFromWhere consumeFromWhere = ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET;
 
@@ -123,7 +126,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
 
     /**
      * 集群模式下消息队列的负载均衡策略
-     * 指定如何将消息队列分配给每个使用者客户机。
+     * 指定如何将消息队列分配给每个客户端。
      * Queue allocation algorithm specifying how message queues are allocated to each consumer clients.
      */
     private AllocateMessageQueueStrategy allocateMessageQueueStrategy;
@@ -153,25 +156,30 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private int consumeThreadMin = 20;
 
     /**
-     * 消费者最大线程数
+     * 消费者最大线程数，因为等待队列是无界队列，所以该值暂时无效
      * Max consumer thread number
      */
     private int consumeThreadMax = 20;
 
     /**
+     * 根据消息堆积数量调整消费者线程池的数量
+     *
+     * msgCnt: 消息堆积数量
+     * 如果 msgCnt >= adjustThreadPoolNumsThreshold * 1   增加线程池核心线程数量
+     * 如果 msgCnt < adjustThreadPoolNumsThreshold * 0.8 减少线程池核心线程数量
      * Threshold for dynamic adjustment of the number of thread pool
      */
     private long adjustThreadPoolNumsThreshold = 100000;
 
     /**
      * 并发消费消息时处理队列最大跨度，默认 2000。
-     * 表示如果消息处理队列中偏移量最大的消息与偏移量最小的消息的跨度超过2000，则延后50ms后再拉取消息
+     * 表示如果消息处理队列中偏移量最大的消息与偏移量最小的消息的跨度超过2000，则暂停消息拉取
      * Concurrently max span offset.it has no effect on sequential consumption
      */
     private int consumeConcurrentlyMaxSpan = 2000;
 
     /**
-     * 默认1000，表示每1000次流控后打印流控日志
+     * 默认1000，队列级别的流量控制，每个消息队列默认最多缓存1000条消息，表示如果当前客户端堆积的待消费消息数量达到该值则暂停拉取消息
      * Flow control threshold on queue level, each message queue will cache at most 1000 messages by default,
      * Consider the {@code pullBatchSize}, the instantaneous value may exceed the limit
      */
@@ -184,6 +192,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private int popThresholdForQueue = 96;
 
     /**
+     * 在队列级别限制缓存消息的大小，每个消息队列默认最多缓存100个MiB消息。超过此值时，会暂停消息拉取
      * Limit the cached message size on queue level, each message queue will cache at most 100 MiB messages by default,
      * Consider the {@code pullBatchSize}, the instantaneous value may exceed the limit
      *
@@ -257,7 +266,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private int maxReconsumeTimes = -1;
 
     /**
-     * 延迟将该队列的消息提交到消费者线程的等待时间，默认延迟1s
+     * 【顺序消费】延迟将该队列的消息提交到消费者线程的等待时间，默认延迟1s
      * Suspending pulling time for cases requiring slow pulling like flow-control scenario.
      */
     private long suspendCurrentQueueTimeMillis = 1000;

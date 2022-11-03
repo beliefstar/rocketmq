@@ -60,9 +60,9 @@ import static org.apache.rocketmq.store.config.StorePathConfigHelper.getStorePat
  * 存储所有ConsumeQueue文件，异步刷盘
  *
  * topic -|
- *      consumeQueueId0 -|
+ *      queueId0 -|
  *          00000000000000000000(文件)
- *      consumeQueueId1
+ *      queueId1
  *
  * 文件内容：
  * |-------8字节-----|------4字节----|------8字节-----|
@@ -114,7 +114,12 @@ public class ConsumeQueueStore {
         consumeQueue.putMessagePositionInfoWrapper(request);
     }
 
+    /**
+     * 消息分发到消费队列
+     * @param dispatchRequest
+     */
     public void putMessagePositionInfoWrapper(DispatchRequest dispatchRequest) {
+        // 根据topic和queueId
         ConsumeQueueInterface cq = this.findOrCreateConsumeQueue(dispatchRequest.getTopic(), dispatchRequest.getQueueId());
         this.putMessagePositionInfoWrapper(cq, dispatchRequest);
     }

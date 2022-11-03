@@ -52,8 +52,10 @@ public abstract class RebalanceImpl {
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
     protected final ConcurrentMap<MessageQueue, PopProcessQueue> popProcessQueueTable = new ConcurrentHashMap<MessageQueue, PopProcessQueue>(64);
 
+    /** topic关联的消息队列信息 [30s 向nameserv更新一次] */
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
         new ConcurrentHashMap<String, Set<MessageQueue>>();
+    /** 订阅信息 */
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
         new ConcurrentHashMap<String, SubscriptionData>();
     protected String consumerGroup;
@@ -234,9 +236,15 @@ public abstract class RebalanceImpl {
         return true;
     }
 
+    /**
+     * 负载均衡
+     * @param isOrder
+     * @return
+     */
     public boolean doRebalance(final boolean isOrder) {
         boolean balanced = true;
-        Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
+        // 当前订阅信息
+        Map<String/* topic */, SubscriptionData> subTable = this.getSubscriptionInner();
         if (subTable != null) {
             for (final Map.Entry<String, SubscriptionData> entry : subTable.entrySet()) {
                 final String topic = entry.getKey();
@@ -244,6 +252,7 @@ public abstract class RebalanceImpl {
                     if (!clientRebalance(topic) && tryQueryAssignment(topic)) {
                         balanced = this.getRebalanceResultFromBroker(topic, isOrder);
                     } else {
+                        // 目前默认此分支
                         balanced = this.rebalanceByTopic(topic, isOrder);
                     }
                 } catch (Throwable e) {
@@ -296,12 +305,21 @@ public abstract class RebalanceImpl {
         return subscriptionInner;
     }
 
+    /**
+     * 负载均衡
+     * @param topic 主题
+     * @param isOrder 是否顺序消费
+     * @return
+     */
     private boolean rebalanceByTopic(final String topic, final boolean isOrder) {
         boolean balanced = true;
         switch (messageModel) {
+            // 广播模式
             case BROADCASTING: {
+                // 该topic下所有的读队列
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
                 if (mqSet != null) {
+                    // 广播模式直接订阅该topic下所有的读队列
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, mqSet, isOrder);
                     if (changed) {
                         this.messageQueueChanged(topic, mqSet, mqSet);
@@ -315,8 +333,11 @@ public abstract class RebalanceImpl {
                 }
                 break;
             }
+            // 集群模式
             case CLUSTERING: {
+                // 该topic下所有的读队列
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
+                // 向broker获取该消费组下所有订阅该topic的客户端
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -333,13 +354,16 @@ public abstract class RebalanceImpl {
                     List<MessageQueue> mqAll = new ArrayList<MessageQueue>();
                     mqAll.addAll(mqSet);
 
+                    // 排序 - 保证当前消费组执行负载均衡时的列表是一致的
                     Collections.sort(mqAll);
                     Collections.sort(cidAll);
 
+                    // 负载均衡策略
                     AllocateMessageQueueStrategy strategy = this.allocateMessageQueueStrategy;
 
                     List<MessageQueue> allocateResult = null;
                     try {
+                        // 使用负载均衡策略进行分配
                         allocateResult = strategy.allocate(
                             this.consumerGroup,
                             this.mQClientFactory.getClientId(),
@@ -355,6 +379,7 @@ public abstract class RebalanceImpl {
                         allocateResultSet.addAll(allocateResult);
                     }
 
+                    // 设置分配到的队列
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);
                     if (changed) {
                         log.info(
@@ -470,12 +495,20 @@ public abstract class RebalanceImpl {
         }
     }
 
+    /**
+     * 设置新的工作队列
+     * @param topic 主题
+     * @param mqSet 新的工作队列
+     * @param isOrder 是否顺序消费
+     * @return
+     */
     private boolean updateProcessQueueTableInRebalance(final String topic, final Set<MessageQueue> mqSet,
         final boolean isOrder) {
         boolean changed = false;
 
-        // drop process queues no longer belong me
+        // 根据本次订阅的队列mqSet统计出需要删除的队列
         HashMap<MessageQueue, ProcessQueue> removeQueueMap = new HashMap<MessageQueue, ProcessQueue>(this.processQueueTable.size());
+        // 旧的工作队列
         Iterator<Entry<MessageQueue, ProcessQueue>> it = this.processQueueTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<MessageQueue, ProcessQueue> next = it.next();
@@ -484,6 +517,7 @@ public abstract class RebalanceImpl {
 
             if (mq.getTopic().equals(topic)) {
                 if (!mqSet.contains(mq)) {
+                    // 就队列不在新的工作队列中，标记移除
                     pq.setDropped(true);
                     removeQueueMap.put(mq, pq);
                 } else if (pq.isPullExpired() && this.consumeType() == ConsumeType.CONSUME_PASSIVELY) {
@@ -501,6 +535,7 @@ public abstract class RebalanceImpl {
             ProcessQueue pq = entry.getValue();
 
             if (this.removeUnnecessaryMessageQueue(mq, pq)) {
+                // 移除多余的工作队列
                 this.processQueueTable.remove(mq);
                 changed = true;
                 log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
@@ -512,21 +547,34 @@ public abstract class RebalanceImpl {
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         for (MessageQueue mq : mqSet) {
             if (!this.processQueueTable.containsKey(mq)) {
+                // 本次新增的工作队列
                 if (isOrder && !this.lock(mq)) {
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     allMQLocked = false;
                     continue;
                 }
 
+                // 移除该队列旧的消费位点信息
                 this.removeDirtyOffset(mq);
+                // 创建工作队列
                 ProcessQueue pq = createProcessQueue(topic);
                 pq.setLocked(true);
+                /*
+                向broker查询该消费组的消费位点，如果不存在，则根据配置的策略 consumeFromWhere 的值来确定位点信息
+                - CONSUME_FROM_LAST_OFFSET：
+                  4.x:如果磁盘消息未过期且未被删除，则从最小偏移量开始消费；如果磁盘已过期并被删除，则从最大偏移量开始消费。
+                  5.x:从最大偏移量开始消费 (请求时新增了属性setZeroIfNotFound，值为false)
+                - CONSUME_FROM_FIRST_OFFSET：从队列当前最小偏移量开始消费
+                - CONSUME_FROM_TIMESTAMP：从消费者指定时间戳开始消费
+                 */
                 long nextOffset = this.computePullFromWhere(mq);
                 if (nextOffset >= 0) {
+                    // 添加工作队列到集合中
                     ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);
                     if (pre != null) {
                         log.info("doRebalance, {}, mq already exists, {}", consumerGroup, mq);
                     } else {
+                        // 添加成功后，新增消息拉取请求
                         log.info("doRebalance, {}, add a new mq, {}", consumerGroup, mq);
                         PullRequest pullRequest = new PullRequest();
                         pullRequest.setConsumerGroup(consumerGroup);
@@ -547,6 +595,7 @@ public abstract class RebalanceImpl {
             mQClientFactory.rebalanceLater(500);
         }
 
+        // 提交拉取任务到 PullMessageService 并延迟500ms开始拉取
         this.dispatchPullRequest(pullRequestList, 500);
 
         return changed;

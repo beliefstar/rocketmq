@@ -60,6 +60,9 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
         this.brokerController = brokerController;
     }
 
+    /**
+     * 拉取消息结果处理
+     */
     @Override
     public RemotingCommand handle(final GetMessageResult getMessageResult,
                                   final RemotingCommand request,
@@ -89,6 +92,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                     return null;
                 }
 
+                // 使用内存拷贝
                 if (this.brokerController.getBrokerConfig().isTransferMsgByHeap()) {
 
                     final long beginTimeMills = this.brokerController.getMessageStore().now();
@@ -99,6 +103,14 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                     response.setBody(r);
                     return response;
                 } else {
+                    /*
+                    零拷贝-header部分依然从先生成在内存中然后写入channel，body部分由于是commitLog的directBuffer可以直接拷贝到channel中
+
+                    零拷贝的副作用是，如果数据不在页面缓存中，页面错误和磁盘读取（通常称为冷数据）将挂起网络线程(实际发送数据的netty线程)。
+                    保持低延迟的发送非常重要，因此对于延迟敏感的应用程序，不建议在默认情况下使用零拷贝。
+
+                    rocketmq存储结构的原因，commitlog是多个topic读写，也就是针对单个topic读是小块文件。
+                     */
                     try {
                         FileRegion fileRegion =
                                 new ManyMessageTransfer(response.encodeHeader(getMessageResult.getBufferTotalSize()), getMessageResult);
@@ -118,6 +130,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                     return null;
                 }
             case ResponseCode.PULL_NOT_FOUND:
+                // 消息未找到-查看是否允许挂起
                 final boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(requestHeader.getSysFlag());
                 final long suspendTimeoutMillisLong = hasSuspendFlag ? requestHeader.getSuspendTimeoutMillis() : 0;
 
@@ -132,6 +145,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                     int queueId = requestHeader.getQueueId();
                     PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
                             this.brokerController.getMessageStore().now(), offset, subscriptionData, messageFilter);
+                    // 挂起连接-长轮询
                     this.brokerController.getPullRequestHoldService().suspendPullRequest(topic, queueId, pullRequest);
                     return null;
                 }

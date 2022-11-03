@@ -116,6 +116,7 @@ public class ClientConfig {
 
     public void changeInstanceNameToPID() {
         if (this.instanceName.equals("DEFAULT")) {
+            // fix Multiple instances in the same application share MQClientInstance
             this.instanceName = UtilAll.getPid() + "#" + System.nanoTime();
         }
     }

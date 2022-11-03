@@ -23,18 +23,25 @@ import java.util.List;
 public class GetMessageResult {
 
     private final List<SelectMappedBufferResult> messageMapedList;
+    /** 消息 */
     private final List<ByteBuffer> messageBufferList;
+    /** 消息队列的偏移量 */
     private final List<Long> messageQueueOffset;
-
+    /** 拉取结果状态码 */
     private GetMessageStatus status;
+    /** 下一次消息拉取的偏移量 */
     private long nextBeginOffset;
+    /** 当前消息队列最小的偏移量 */
     private long minOffset;
+    /** 当前消息队列最大的偏移量 */
     private long maxOffset;
-
+    /** 消息的总大小 */
     private int bufferTotalSize = 0;
-
+    /** 消息的数量 */
     private int messageCount = 0;
-
+    /**
+     * commitLog中剩余还未消费的size > 当前broker机器可使用的内存40%
+     */
     private boolean suggestPullingFromSlave = false;
 
     private int msgCount4Commercial = 0;

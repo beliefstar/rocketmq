@@ -30,8 +30,11 @@ public class SubscriptionData implements Comparable<SubscriptionData> {
     public final static String SUB_ALL = "*";
     private boolean classFilterMode = false;
     private String topic;
+    // 配置的tags: tagA || tagB
     private String subString;
+    // 解析subString后的tag列表
     private Set<String> tagsSet = new HashSet<String>();
+    // tag列表对应的tag的hash值
     private Set<Integer> codeSet = new HashSet<Integer>();
     private long subVersion = System.currentTimeMillis();
     private String expressionType = ExpressionType.TAG;

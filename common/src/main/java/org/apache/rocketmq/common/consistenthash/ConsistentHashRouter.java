@@ -24,12 +24,15 @@ import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
+import static org.apache.commons.codec.binary.Hex.encodeHex;
+
 /**
  * To hash Node objects to a hash ring with a certain amount of virtual node.
  * Method routeNode will return a Node instance which the object key should be allocated to according to consistent hash
  * algorithm
  */
 public class ConsistentHashRouter<T extends Node> {
+    /** 有序集合 */
     private final SortedMap<Long, VirtualNode<T>> ring = new TreeMap<Long, VirtualNode<T>>();
     private final HashFunction hashFunction;
 
@@ -38,9 +41,10 @@ public class ConsistentHashRouter<T extends Node> {
     }
 
     /**
-     * @param pNodes collections of physical nodes
-     * @param vNodeCount amounts of virtual nodes
-     * @param hashFunction hash Function to hash Node instances
+     * 构造方法
+     * @param pNodes 物理节点
+     * @param vNodeCount 虚拟节点数量
+     * @param hashFunction 哈希函数
      */
     public ConsistentHashRouter(Collection<T> pNodes, int vNodeCount, HashFunction hashFunction) {
         if (hashFunction == null) {
@@ -55,6 +59,7 @@ public class ConsistentHashRouter<T extends Node> {
     }
 
     /**
+     * 新增物理节点，实际放入虚拟节点数量
      * add physic node to the hash ring with some virtual nodes
      *
      * @param pNode physical node needs added to hash ring
@@ -63,6 +68,7 @@ public class ConsistentHashRouter<T extends Node> {
     public void addNode(T pNode, int vNodeCount) {
         if (vNodeCount < 0)
             throw new IllegalArgumentException("illegal virtual node counts :" + vNodeCount);
+        // 防止key重复，从已有的序号继续递增
         int existingReplicas = getExistingReplicas(pNode);
         for (int i = 0; i < vNodeCount; i++) {
             VirtualNode<T> vNode = new VirtualNode<T>(pNode, i + existingReplicas);
@@ -85,6 +91,7 @@ public class ConsistentHashRouter<T extends Node> {
     }
 
     /**
+     * 路由挂载节点，根据节点的哈希值在哈希环上找到挂载的节点
      * with a specified key, route the nearest Node instance in the current hash ring
      *
      * @param objectKey the object key to find a nearest Node
@@ -99,6 +106,11 @@ public class ConsistentHashRouter<T extends Node> {
         return ring.get(nodeHashVal).getPhysicalNode();
     }
 
+    /**
+     * 获取该物理节点的虚拟节点数量
+     * @param pNode
+     * @return
+     */
     public int getExistingReplicas(T pNode) {
         int replicas = 0;
         for (VirtualNode<T> vNode : ring.values()) {

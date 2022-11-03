@@ -30,6 +30,11 @@ public class ConsumeConcurrentlyContext {
      * >0,client control retry frequency
      */
     private int delayLevelWhenNextConsume = 0;
+
+    /**
+     * 用以标记部分成功的场景，将该值指向最后一条成功的消息的下标，代表在此下标之后的消息都是消费失败，部分成功时必须返回消费成功
+     * 如果单次消费的消息数量为1，则次属性无效
+     */
     private int ackIndex = Integer.MAX_VALUE;
 
     public ConsumeConcurrentlyContext(MessageQueue messageQueue) {

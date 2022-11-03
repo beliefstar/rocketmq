@@ -394,8 +394,11 @@ public class MessageStoreConfig {
     }
 
     public int getMappedFileSizeConsumeQueue() {
-
+        // 因为每条数据的大小是 20b，并且 mappedFileSizeConsumeQueue 的大小可以随意设置，有可能不是 20 的倍数
+        // 所以此处将设置的 mappedFileSizeConsumeQueue 值除以20再取整得到存储的数量
         int factor = (int) Math.ceil(this.mappedFileSizeConsumeQueue / (ConsumeQueue.CQ_STORE_UNIT_SIZE * 1.0));
+
+        // 再用这个得到的数量乘以每条数据的大小20
         return (int) (factor * ConsumeQueue.CQ_STORE_UNIT_SIZE);
     }
 

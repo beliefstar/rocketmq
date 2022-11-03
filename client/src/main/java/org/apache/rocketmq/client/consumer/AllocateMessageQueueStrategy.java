@@ -20,18 +20,19 @@ import java.util.List;
 import org.apache.rocketmq.common.message.MessageQueue;
 
 /**
+ * 客户端负载均衡策略
  * Strategy Algorithm for message allocating between consumers
  */
 public interface AllocateMessageQueueStrategy {
 
     /**
-     * Allocating by consumer id
+     * 根据消费者客户端ID进行分配
      *
-     * @param consumerGroup current consumer group
-     * @param currentCID current consumer id
-     * @param mqAll message queue set in current topic
-     * @param cidAll consumer set in current consumer group
-     * @return The allocate result of given strategy
+     * @param consumerGroup 当前的消费组
+     * @param currentCID 当前的客户端ID
+     * @param mqAll 所有的消息队列
+     * @param cidAll 所有的客户端ID
+     * @return 分配给当前客户端的队列
      */
     List<MessageQueue> allocate(
         final String consumerGroup,
@@ -41,9 +42,7 @@ public interface AllocateMessageQueueStrategy {
     );
 
     /**
-     * Algorithm name
-     *
-     * @return The strategy name
+     * 算法名称(日志)
      */
     String getName();
 }

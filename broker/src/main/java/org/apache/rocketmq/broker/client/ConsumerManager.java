@@ -118,6 +118,8 @@ public class ConsumerManager {
     public boolean registerConsumer(final String group, final ClientChannelInfo clientChannelInfo,
         ConsumeType consumeType, MessageModel messageModel, ConsumeFromWhere consumeFromWhere,
         final Set<SubscriptionData> subList, boolean isNotifyConsumerIdsChangedEnable) {
+
+
         return registerConsumer(group, clientChannelInfo, consumeType, messageModel, consumeFromWhere, subList,
             isNotifyConsumerIdsChangedEnable, true);
     }

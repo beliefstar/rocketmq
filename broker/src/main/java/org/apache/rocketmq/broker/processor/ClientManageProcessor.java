@@ -99,6 +99,9 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                 }
             }
 
+            /**
+             * 保存订阅信息
+             */
             SubscriptionGroupConfig subscriptionGroupConfig =
                 this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(
                     consumerData.getGroupName());

@@ -71,6 +71,13 @@ public class PullAPIWrapper {
         this.unitMode = unitMode;
     }
 
+    /**
+     * 拉取消息结果处理
+     * @param mq
+     * @param pullResult
+     * @param subscriptionData
+     * @return
+     */
     public PullResult processPullResult(final MessageQueue mq, final PullResult pullResult,
         final SubscriptionData subscriptionData) {
         PullResultExt pullResultExt = (PullResultExt) pullResult;
@@ -78,6 +85,7 @@ public class PullAPIWrapper {
         this.updatePullFromWhichNode(mq, pullResultExt.getSuggestWhichBrokerId());
         if (PullStatus.FOUND == pullResult.getPullStatus()) {
             ByteBuffer byteBuffer = ByteBuffer.wrap(pullResultExt.getMessageBinary());
+            // 消息解码
             List<MessageExt> msgList = MessageDecoder.decodesBatch(
                 byteBuffer,
                 this.mQClientFactory.getClientConfig().isDecodeReadBody(),
@@ -178,6 +186,9 @@ public class PullAPIWrapper {
         }
     }
 
+    /**
+     * 拉取消息
+     */
     public PullResult pullKernelImpl(
         final MessageQueue mq,
         final String subExpression,
@@ -220,14 +231,19 @@ public class PullAPIWrapper {
             }
 
             PullMessageRequestHeader requestHeader = new PullMessageRequestHeader();
+            // 消费组
             requestHeader.setConsumerGroup(this.consumerGroup);
             requestHeader.setTopic(mq.getTopic());
             requestHeader.setQueueId(mq.getQueueId());
+            // 消息拉取位点
             requestHeader.setQueueOffset(offset);
+            // 消息拉取数量 32
             requestHeader.setMaxMsgNums(maxNums);
             requestHeader.setSysFlag(sysFlagInner);
             requestHeader.setCommitOffset(commitOffset);
+            // 15s 挂起时间
             requestHeader.setSuspendTimeoutMillis(brokerSuspendMaxTimeMillis);
+            // 订阅表达式 tag
             requestHeader.setSubscription(subExpression);
             requestHeader.setSubVersion(subVersion);
             requestHeader.setMaxMsgBytes(maxSizeInBytes);

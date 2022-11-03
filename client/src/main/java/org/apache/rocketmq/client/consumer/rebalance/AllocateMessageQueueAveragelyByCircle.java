@@ -57,4 +57,26 @@ public class AllocateMessageQueueAveragelyByCircle extends AbstractAllocateMessa
     public String getName() {
         return "AVG_BY_CIRCLE";
     }
+
+
+    public static void main(String[] args) {
+        List<MessageQueue> list = new ArrayList<>();
+        list.add(new MessageQueue("t1", "b1", 0));
+        list.add(new MessageQueue("t1", "b1", 1));
+        list.add(new MessageQueue("t1", "b1", 2));
+        list.add(new MessageQueue("t1", "b2", 0));
+        list.add(new MessageQueue("t1", "b2", 1));
+        list.add(new MessageQueue("t1", "b2", 2));
+        list.add(new MessageQueue("t1", "b3", 0));
+
+        List<String> cidAll = new ArrayList<>();
+        cidAll.add("c1");
+        cidAll.add("c2");
+
+        AllocateMessageQueueAveragelyByCircle averagely = new AllocateMessageQueueAveragelyByCircle();
+        List<MessageQueue> l1 = averagely.allocate("g", "c1", list, cidAll);
+        System.out.println("c1: " + l1);
+        List<MessageQueue> l2 = averagely.allocate("g", "c2", list, cidAll);
+        System.out.println("c2: " + l2);
+    }
 }

@@ -558,6 +558,10 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         return this.minLogicOffset / CQ_STORE_UNIT_SIZE;
     }
 
+    /**
+     * 消息分发
+     * @param request the request containing dispatch information.
+     */
     @Override
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
         final int maxRetries = 30;
@@ -565,6 +569,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         for (int i = 0; i < maxRetries && canWrite; i++) {
             long tagsCode = request.getTagsCode();
             if (isExtWriteEnable()) {
+                // 扩展信息
                 ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                 cqExtUnit.setFilterBitMap(request.getBitMap());
                 cqExtUnit.setMsgStoreTime(request.getStoreTimestamp());
@@ -578,9 +583,11 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                         topic, queueId, request.getCommitLogOffset());
                 }
             }
+            // 写入cq文件
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
                 request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
+                // 更新刷盘安全点
                 if (this.messageStore.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE ||
                     this.messageStore.getMessageStoreConfig().isEnableDLegerCommitLog()) {
                     this.messageStore.getStoreCheckpoint().setPhysicMsgTimestamp(request.getStoreTimestamp());
@@ -730,10 +737,15 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
             return true;
         }
 
+        // 重置该内存
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
+
+        // commitLog 文件的物理偏移量
         this.byteBufferIndex.putLong(offset);
+        // 消息大小
         this.byteBufferIndex.putInt(size);
+        // tag哈希值
         this.byteBufferIndex.putLong(tagsCode);
 
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
@@ -771,6 +783,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                 }
             }
             this.maxPhysicOffset = offset + size;
+            // 写入到该文件的pagecache中
             return mappedFile.appendMessage(this.byteBufferIndex.array());
         }
         return false;
@@ -849,6 +862,9 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         return false;
     }
 
+    /**
+     * 从consumeQueue读取数据的包装类，将byte转换为CqUnit
+     */
     private class ConsumeQueueIterator implements ReferredIterator<CqUnit> {
         private SelectMappedBufferResult sbr;
         private int relativePos = 0;

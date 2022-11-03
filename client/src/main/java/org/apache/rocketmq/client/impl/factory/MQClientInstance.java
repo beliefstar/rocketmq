@@ -121,7 +121,7 @@ public class MQClientInstance {
      * And the value is the broker instance list that belongs to the broker cluster.
      * For the sub map, the key is the id of single broker instance, and the value is the address.
      */
-    private final ConcurrentMap<String, HashMap<Long, String>> brokerAddrTable = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String/* cluster */, HashMap<Long/* brokerId */, String/* broker addr */>> brokerAddrTable = new ConcurrentHashMap<>();
 
     private final ConcurrentMap<String/* Broker Name */, HashMap<String/* address */, Integer>> brokerVersionTable = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "MQClientFactoryScheduledThread"));
@@ -157,6 +157,7 @@ public class MQClientInstance {
 
         this.pullMessageService = new PullMessageService(this);
 
+        // 20s触发一次负载均衡计算
         this.rebalanceService = new RebalanceService(this);
 
         this.defaultMQProducer = new DefaultMQProducer(MixAll.CLIENT_INNER_PRODUCER_GROUP);
@@ -293,6 +294,7 @@ public class MQClientInstance {
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
 
+        // 30s 更新一次topic路由信息
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.updateTopicRouteInfoFromNameServer();
@@ -301,6 +303,7 @@ public class MQClientInstance {
             }
         }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
 
+        // 30s 向broker发送心跳
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.cleanOfflineBroker();
@@ -310,6 +313,7 @@ public class MQClientInstance {
             }
         }, 1000, this.clientConfig.getHeartbeatBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        // 5s 向broker上报消费位点
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.persistAllConsumerOffset();
@@ -318,6 +322,7 @@ public class MQClientInstance {
             }
         }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
+        // 1min 检查消息堆积情况，调整消费线程池的核心线程数量【暂时无效】
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.adjustThreadPool();
@@ -545,6 +550,7 @@ public class MQClientInstance {
                 if (addr == null) {
                     continue;
                 }
+                // 生产者只向broker的master发送心跳
                 if (consumerEmpty && MixAll.MASTER_ID != id) {
                     continue;
                 }
@@ -645,7 +651,7 @@ public class MQClientInstance {
 
                             // Update Pub info
                             {
-                                // 根据topicRouteData 生成 List<MessageQueue>
+                                // 【生产者】根据topicRouteData中的QueueDatas的写权限 生成 List<MessageQueue>
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
                                 for (Entry<String, MQProducerInner> entry : this.producerTable.entrySet()) {
@@ -659,6 +665,7 @@ public class MQClientInstance {
 
                             // Update sub info
                             if (!consumerTable.isEmpty()) {
+                                // 【消费者】根据topicRouteData中的QueueDatas的读权限 生成 List<MessageQueue>
                                 Set<MessageQueue> subscribeInfo = topicRouteData2TopicSubscribeInfo(topic, topicRouteData);
                                 for (Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
                                     MQConsumerInner impl = entry.getValue();
@@ -1060,6 +1067,12 @@ public class MQClientInstance {
         return 0;
     }
 
+    /**
+     * 向broker获取该消费组下所有订阅该topic的客户端
+     * @param topic
+     * @param group 消费组
+     * @return
+     */
     public List<String> findConsumerIdList(final String topic, final String group) {
         String brokerAddr = this.findBrokerAddrByTopic(topic);
         if (null == brokerAddr) {

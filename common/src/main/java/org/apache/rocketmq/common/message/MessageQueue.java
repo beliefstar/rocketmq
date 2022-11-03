@@ -101,7 +101,8 @@ public class MessageQueue implements Comparable<MessageQueue>, Serializable {
 
     @Override
     public String toString() {
-        return "MessageQueue [topic=" + topic + ", brokerName=" + brokerName + ", queueId=" + queueId + "]";
+//        return "MessageQueue [topic=" + topic + ", brokerName=" + brokerName + ", queueId=" + queueId + "]";
+        return topic + "-" + brokerName + "-" + queueId;
     }
 
     @Override

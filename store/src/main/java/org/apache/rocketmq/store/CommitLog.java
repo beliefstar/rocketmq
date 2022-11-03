@@ -865,6 +865,7 @@ public class CommitLog implements Swappable {
                 needAssignOffset = false;
             }
             if (needAssignOffset) {
+                // 设置消息在consumeQueue中的偏移量queueOffset
                 defaultMessageStore.assignOffset(msg, getMessageNum(msg));
             }
 
