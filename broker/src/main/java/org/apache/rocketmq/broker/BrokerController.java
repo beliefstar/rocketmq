@@ -767,6 +767,7 @@ public class BrokerController {
         }
 
         //scheduleMessageService load after messageStore load success
+        // 加载延时消息服务
         result = result && this.scheduleMessageService.load();
 
         for (BrokerAttachedPlugin brokerAttachedPlugin : brokerAttachedPlugins) {
@@ -840,6 +841,7 @@ public class BrokerController {
     public void registerMessageStoreHook() {
         List<PutMessageHook> putMessageHookList = messageStore.getPutMessageHookList();
 
+        // 消息校验
         putMessageHookList.add(new PutMessageHook() {
             @Override
             public String hookName() {

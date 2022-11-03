@@ -501,6 +501,7 @@ public class CommitLog implements Swappable {
                         }
 
                         if (delayLevel > 0) {
+                            // 延时消息时，分发到consumeQueue中的tagCode保存的是消息应该被消费的时间戳
                             tagsCode = this.defaultMessageStore.computeDeliverTimestamp(delayLevel,
                                 storeTimestamp);
                         }

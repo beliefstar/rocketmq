@@ -528,13 +528,16 @@ public class DefaultMessageStore implements MessageStore {
     @Override
     public CompletableFuture<PutMessageResult> asyncPutMessage(MessageExtBrokerInner msg) {
 
-        // put消息之前的检查：broker停止工作、当前是否可写入等等
         // BrokerController#registerMessageStoreHook()
         /*
+         * put消息之前的检查：broker停止工作、当前是否可写入等等
          * 1. 服务不可用：节点停止、从节点、
          * 2. 不可写：磁盘空间满、写错误
          * 3. 参数校验
          * 4. OS PageCache-Busy: commitLog写入获取锁的时间超过1s
+         *
+         * 延时消息
+         * 1. 将原topic和queueId保存在msg的property中，修改topic为SCHEDULE_TOPIC_XXXX，queueId为延迟等级(delayTimeLevel - 1)
          */
         for (PutMessageHook putMessageHook : putMessageHookList) {
             PutMessageResult handleResult = putMessageHook.executeBeforePutMessage(msg);
@@ -2715,6 +2718,12 @@ public class DefaultMessageStore implements MessageStore {
         return maxDelayLevel;
     }
 
+    /**
+     * 根据延时等级和消息的保存时间计算消息的分发时间
+     * @param delayLevel
+     * @param storeTimestamp
+     * @return
+     */
     public long computeDeliverTimestamp(final int delayLevel, final long storeTimestamp) {
         Long time = this.delayLevelTable.get(delayLevel);
         if (time != null) {

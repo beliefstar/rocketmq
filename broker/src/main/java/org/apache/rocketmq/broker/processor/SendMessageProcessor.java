@@ -267,7 +267,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
 
-        // Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
+        // 事务消息
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
         boolean sendTransactionPrepareMessage = false;
         if (Boolean.parseBoolean(traFlag)
