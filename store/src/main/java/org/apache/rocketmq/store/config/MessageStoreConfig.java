@@ -61,7 +61,7 @@ public class MessageStoreConfig {
 
     private boolean timerEnableCheckMetrics = true;
     private boolean timerInterceptDelayLevel = false;
-    private int timerMaxDelaySec = 3600 * 24 * 3;
+    private int timerMaxDelaySec = 3600 * 24 * 3;// 3天
     private boolean timerWheelEnable = true;
 
     /**

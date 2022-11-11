@@ -187,7 +187,7 @@ public abstract class RebalanceImpl {
     }
 
     public void lockAll() {
-        HashMap<String, Set<MessageQueue>> brokerMqs = this.buildProcessQueueTableByBrokerName();
+        HashMap<String/* brokerName */, Set<MessageQueue>> brokerMqs = this.buildProcessQueueTableByBrokerName();
 
         Iterator<Entry<String, Set<MessageQueue>>> it = brokerMqs.entrySet().iterator();
         while (it.hasNext()) {
@@ -534,8 +534,9 @@ public abstract class RebalanceImpl {
             MessageQueue mq = entry.getKey();
             ProcessQueue pq = entry.getValue();
 
+            // 移除多余的工作队列
             if (this.removeUnnecessaryMessageQueue(mq, pq)) {
-                // 移除多余的工作队列
+                // 持久化保存该队列的消费位点，如果是顺序消费并且是集群模式则要解锁队列
                 this.processQueueTable.remove(mq);
                 changed = true;
                 log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
@@ -549,6 +550,7 @@ public abstract class RebalanceImpl {
             if (!this.processQueueTable.containsKey(mq)) {
                 // 本次新增的工作队列
                 if (isOrder && !this.lock(mq)) {
+                    // 是顺序消费，并且锁定成功
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     allMQLocked = false;
                     continue;
@@ -592,6 +594,7 @@ public abstract class RebalanceImpl {
         }
 
         if (!allMQLocked) {
+            // 有未锁定成功的队列，500ms后再次执行
             mQClientFactory.rebalanceLater(500);
         }
 

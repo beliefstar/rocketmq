@@ -763,6 +763,7 @@ public class BrokerController {
         result = result && this.messageStore.load();
 
         if (messageStoreConfig.isTimerWheelEnable()) {
+            // 任意时间的延迟消息 v5.0
             result = result && this.timerMessageStore.load();
         }
 
@@ -912,6 +913,9 @@ public class BrokerController {
         this.transactionalMessageCheckService = new TransactionalMessageCheckService(this);
     }
 
+    /**
+     * 初始化acl
+     */
     private void initialAcl() {
         if (!this.brokerConfig.isAclEnable()) {
             LOG.info("The broker dose not enable acl");

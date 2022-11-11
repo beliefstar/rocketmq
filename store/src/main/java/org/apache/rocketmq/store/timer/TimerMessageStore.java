@@ -69,7 +69,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.rocketmq.store.util.PerfCounter;
 
+/**
+ * 任意时间的延迟消息
+ */
 public class TimerMessageStore {
+    // rmq_sys_wheel_timer
     public static final String TIMER_TOPIC = TopicValidator.SYSTEM_TOPIC_PREFIX + "wheel_timer";
     public static final String TIMER_OUT_MS = MessageConst.PROPERTY_TIMER_OUT_MS;
     public static final String TIMER_ENQUEUE_MS = MessageConst.PROPERTY_TIMER_ENQUEUE_MS;
@@ -179,10 +183,15 @@ public class TimerMessageStore {
                 return ByteBuffer.allocateDirect(storeConfig.getMaxMessageSize() + 100);
             }
         };
+
+        // 入时间轮
         enqueueGetService = new TimerEnqueueGetService();
         enqueuePutService = new TimerEnqueuePutService();
-        dequeueWarmService = new TimerDequeueWarmService();
+
+        // 出时间轮
         dequeueGetService = new TimerDequeueGetService();
+
+        dequeueWarmService = new TimerDequeueWarmService();
         timerFlushService = new TimerFlushService();
         int getThreadNum = storeConfig.getTimerGetMessageThreadNum();
         if (getThreadNum <= 0) {
@@ -853,6 +862,7 @@ public class TimerMessageStore {
         if (!isRunningDequeue()) {
             return -1;
         }
+        // currWriteTimeMs 在写入时更新，保存的当前最新的时间，可以认为是当前的系统时间戳
         if (currReadTimeMs >= currWriteTimeMs) {
             return -1;
         }
@@ -1416,6 +1426,11 @@ public class TimerMessageStore {
                             try {
                                 perfs.startTick("dequeue_put");
                                 addMetric(tr.getMsg(), -1);
+                                /*
+                                转换消息，根据是否下一周期 needRoll 进行判断，
+                                如果不需要：直接设置真实的topic属性进行投递
+                                如果需要：则重新放入到timerLog的topic中
+                                 */
                                 MessageExtBrokerInner msg = convert(tr.getMsg(), tr.getEnqueueTime(), needRoll(tr.getMagic()));
                                 doRes = PUT_NEED_RETRY != doPut(msg, needRoll(tr.getMagic()));
                                 while (!doRes && !isStopped()) {

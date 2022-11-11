@@ -16,13 +16,16 @@
  */
 package org.apache.rocketmq.store.timer;
 
+/**
+ * 时间轮槽位
+ */
 public class Slot {
-    public static final short SIZE = 32;
-    public final long timeMs;
-    public final long firstPos;
-    public final long lastPos;
-    public final int num;
-    public final int magic; //no use now, just keep it
+    public static final short SIZE = 32;// 8 + 8 + 8 + 4 + 4
+    public final long timeMs; // 8
+    public final long firstPos; // 8
+    public final long lastPos; // 8
+    public final int num; // 4
+    public final int magic; // 4 no use now, just keep it
 
     public Slot(long timeMs, long firstPos, long lastPos) {
         this.timeMs = timeMs;

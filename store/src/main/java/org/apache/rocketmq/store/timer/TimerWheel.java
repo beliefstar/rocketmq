@@ -29,16 +29,28 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
+/**
+ * 时间轮
+ */
 public class TimerWheel {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     public static final int BLANK = -1, IGNORE = -2;
+    /** 槽位总数 (7天的秒数) */
     public final int slotsTotal;
+    /** 精度 */
     public final int precisionMs;
+
+    /** 文件名称 */
     private String fileName;
+    /** 文件 */
     private final RandomAccessFile randomAccessFile;
+    /** 文件管道 */
     private final FileChannel fileChannel;
+    /** 文件的内存映射 */
     private final MappedByteBuffer mappedByteBuffer;
+
+    /** 直接内存 (wheelLength) */
     private final ByteBuffer byteBuffer;
     private final ThreadLocal<ByteBuffer> localBuffer = new ThreadLocal<ByteBuffer>() {
         @Override
@@ -46,6 +58,8 @@ public class TimerWheel {
             return byteBuffer.duplicate();
         }
     };
+
+    /** 轮子长度 byte: slotsTotal * 2 * Slot.SIZE(32) */
     private final int wheelLength;
 
     public TimerWheel(String fileName, int slotsTotal, int precisionMs) throws IOException {

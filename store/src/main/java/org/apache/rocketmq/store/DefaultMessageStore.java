@@ -207,8 +207,12 @@ public class DefaultMessageStore implements MessageStore {
         this.consumeQueueStore = new ConsumeQueueStore(this, this.messageStoreConfig);
 
         this.flushConsumeQueueService = new FlushConsumeQueueService();
+
+        // 清除过期commitLog文件
         this.cleanCommitLogService = new CleanCommitLogService();
+        // 清除过期consumeQueue文件
         this.cleanConsumeQueueService = new CleanConsumeQueueService();
+
         this.correctLogicOffsetService = new CorrectLogicOffsetService();
         this.storeStatsService = new StoreStatsService(getBrokerIdentity());
         this.indexService = new IndexService(this);
@@ -322,6 +326,7 @@ public class DefaultMessageStore implements MessageStore {
                 LOGGER.info("message store recover end, and the max phy offset = {}", this.getMaxPhyOffset());
             }
 
+            // commitLog 的当前写指针
             long maxOffset = this.getMaxPhyOffset();
             this.setBrokerInitMaxOffset(maxOffset);
             LOGGER.info("load over, and the max phy offset = {}", maxOffset);
@@ -382,6 +387,7 @@ public class DefaultMessageStore implements MessageStore {
             this.haService.start();
         }
 
+        // 创建abort文件
         this.createTempFile();
         this.addScheduleTask();
         this.perfs.start();
@@ -469,6 +475,7 @@ public class DefaultMessageStore implements MessageStore {
             this.perfs.shutdown();
 
             if (this.runningFlags.isWriteable() && dispatchBehindBytes() == 0) {
+                // 删除abort文件
                 this.deleteFile(StorePathConfigHelper.getAbortFile(this.messageStoreConfig.getStorePathRootDir()));
                 shutDownNormal = true;
             } else {
@@ -1635,6 +1642,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private void addScheduleTask() {
 
+        // 10s 执行一次
         this.scheduledExecutorService.scheduleAtFixedRate(new AbstractBrokerRunnable(this.getBrokerIdentity()) {
             @Override
             public void run2() {
@@ -1712,7 +1720,7 @@ public class DefaultMessageStore implements MessageStore {
 
         // recover consume queue
         long recoverConsumeQueueStart = System.currentTimeMillis();
-        // 遍历文件数据，找到当前写入的起始位置等属性
+        // 恢复consumeQueue的数据，遍历文件数据，验证每个数据的完整性，找到每个consumeQueue中分发的commitLog的最大指针位置
         this.recoverConsumeQueue();
         // 当前 consumeQueue 保存的 commitlog 最大消息偏移量
         long maxPhyOffsetOfConsumeQueue = this.getMaxOffsetInConsumeQueue();
@@ -1722,14 +1730,14 @@ public class DefaultMessageStore implements MessageStore {
         if (lastExitOK) {
             // 正常启动恢复数据
             // 遍历最后三个文件的内容，检查消息是否有效，并得到当前可写入的偏移量等属性
-            // 对比当前可写入偏移量和 consumeQueue 中消息最大偏移量对比，将 consumeQueue 中大于 commitLog 最大消息偏移量的数据删除调
+            // 对比当前可写入偏移量和 consumeQueue 中消息最大偏移量对比，将 consumeQueue 中大于 commitLog 最大消息偏移量的数据删除
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
             // 异常启动恢复数据
             /*
             根据 safePoint 安全点文件保存的最后时间戳，找到第一个第一条消息的写入时间小于等于该安全点时间戳的mappedFile文件
             从该mappedFile文件开始，检查每个文件内容，并得到当前可写入的偏移量等属性
-            对比当前可写入偏移量和 consumeQueue 中消息最大偏移量对比，将 consumeQueue 中大于 commitLog 最大消息偏移量的数据删除调
+            对比当前可写入偏移量和 consumeQueue 中消息最大偏移量对比，将 consumeQueue 中大于 commitLog 最大消息偏移量的数据删除
              */
             this.commitLog.recoverAbnormally(maxPhyOffsetOfConsumeQueue);
         }
@@ -2067,13 +2075,20 @@ public class DefaultMessageStore implements MessageStore {
 
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // 72h = 3天
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // 100
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // 120000
             int destroyMappedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
+            // 10
             int deleteFileBatchMax = DefaultMessageStore.this.getMessageStoreConfig().getDeleteFileBatchMax();
 
+            // 是否到达配置的执行时间 凌晨04点
             boolean isTimeUp = this.isTimeToDelete();
+            // 是否磁盘空间使用率达到上限
             boolean isUsageExceedsThreshold = this.isSpaceToDelete();
+            // 手动标记需要执行清理文件
             boolean isManualDelete = this.manualDeleteFileSeveralTimes > 0;
 
             if (isTimeUp || isUsageExceedsThreshold || isManualDelete) {

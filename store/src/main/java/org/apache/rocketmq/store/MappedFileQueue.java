@@ -205,7 +205,7 @@ public class MappedFileQueue implements Swappable {
             try {
                 MappedFile mappedFile = new DefaultMappedFile(file.getPath(), mappedFileSize);
 
-                // 重置指针在文件末尾处，后续数据恢复时会重新设置该指针
+                // 重置指针在文件末尾处，后续数据恢复时会重新设置该指针 truncateDirtyFiles
                 mappedFile.setWrotePosition(this.mappedFileSize);
                 mappedFile.setFlushedPosition(this.mappedFileSize);
                 mappedFile.setCommittedPosition(this.mappedFileSize);
@@ -391,6 +391,7 @@ public class MappedFileQueue implements Swappable {
         if (null == mfs)
             return 0;
 
+        // 默认保留一个文件
         int mfsLength = mfs.length - 1;
         int deleteCount = 0;
         List<MappedFile> files = new ArrayList<MappedFile>();
